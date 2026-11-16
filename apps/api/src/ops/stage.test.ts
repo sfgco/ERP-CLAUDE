@@ -65,7 +65,7 @@ describe('staging readiness 1 — bootstrap Lambda: departments + first admin, o
 });
 
 describe('staging readiness 3 — demo data only on staging, random passwords, purgeable', () => {
-  it('is refused outside the staging stage', () => {
+  it('is refused outside the staging stage', async () => {
     expect(() => assertStagingDemoAllowed({ NODE_ENV: 'production', STAGE: 'prod' })).toThrow(/refused/);
     expect(() => assertStagingDemoAllowed({ NODE_ENV: 'production', STAGE: 'production' })).toThrow(
       /refused/,
@@ -73,7 +73,7 @@ describe('staging readiness 3 — demo data only on staging, random passwords, p
     expect(() => assertStagingDemoAllowed({ NODE_ENV: 'production' })).toThrow(/refused/);
     expect(() => assertStagingDemoAllowed({ NODE_ENV: 'development' })).toThrow(/refused/);
     expect(() => assertStagingDemoAllowed({ NODE_ENV: 'production', STAGE: 'staging' })).not.toThrow();
-    expect(() => seedStagingDemo()).rejects.toThrow(/refused/); // env has no STAGE in tests
+    await expect(seedStagingDemo()).rejects.toThrow(/refused/); // env has no STAGE in tests
   });
 
   it('loads the sample people with one random password each (returned once), tags every record, and purgeDemo removes exactly them', async () => {

@@ -8,6 +8,7 @@ import { riyadhPeriod } from '../../core/kpi/service';
 import { DiscussionEntry } from '../../core/discussions/model';
 import { apiOf, setup, soldAndInvoiced, upload } from '../../test/salesFixtures';
 import { CommunicationLog, Customer } from '../crm/model';
+import { registerCrmSubscribers } from '../crm/events';
 import { SalesTargetVersion } from './management.model';
 
 const app = () => testApp();
@@ -378,6 +379,8 @@ describe('Sales S4 — targets, KPIs, dashboard, library, discussions, calendar 
   });
 
   it('calendar: meeting type and Marketing notice (once, with name, date, place, organizer); an outcome on a customer meeting lands in the communication log', async () => {
+    // test/setup.ts clears outbox subscribers before every test; the Lambdas register them in registerModules().
+    registerCrmSubscribers();
     const { u, t, customerId } = await setup();
     const start = new Date(Date.now() + 3 * 86_400_000);
     const ev = {
