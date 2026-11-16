@@ -622,9 +622,11 @@ export async function seedSales(): Promise<{ customers: number; leads: number }>
     await sendIt(qSent._id); // مرسل
     const qRejected = await quote(school._id, cardboard!._id, 1);
     await sendIt(qRejected._id);
+    // The reason comes from the admin list `sales.quoteRejectionReasons` [SAL §3 م3; DECISIONS §20 Q7]; free text is refused.
     await respondQuote(reemQuotes, String(qRejected._id), {
       response: 'rejected',
-      reason: 'السعر أعلى من المنافس',
+      reason: 'السعر',
+      note: 'السعر أعلى من المنافس',
     });
     const qNegotiating = await quote(gulf._id, visitSvc!._id, 24);
     await sendIt(qNegotiating._id);
