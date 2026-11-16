@@ -2,7 +2,8 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    # Feature branches run the full check on push too, so they are tested before a PR is opened.
+    branches: [main, 'sales-*']
   pull_request:
 
 jobs:
