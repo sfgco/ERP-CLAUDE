@@ -44,6 +44,10 @@ export async function seedSales(): Promise<{ customers: number; leads: number }>
   if (await Customer.countDocuments()) return { customers: 0, leads: 0 };
   const sales = await Department.findOne({ code: 'sales' });
   if (!sales) return { customers: 0, leads: 0 };
+  // Module hooks first [SAL §3 «عميل جديد / فرصة بيعية جديدة», §18 (1)]: the opportunity created with a customer, the
+  // lead-conversion and owner-transfer hooks, record resolvers and access checkers all come from the module registry.
+  // Without this the sample customers would have no opportunities and the quotes below could not link to them.
+  registerModules();
   const byEmail = async (email: string) => {
     const u = await User.findOne({ email });
     if (!u) throw new Error(`seed: user ${email} missing`);
@@ -482,8 +486,7 @@ export async function seedSales(): Promise<{ customers: number; leads: number }>
 
   // S4 [SAL §11, §11.1, §10.3]: a cardboard sale invoiced and fully collected this month (tons and collection days
   // for the KPI board), a weekly market price, monthly targets (one changed with a reason → two versions), and a
-  // discussion with Finance on a customer. Record resolvers come from the module registry.
-  registerModules();
+  // discussion with Finance on a customer.
   await addMarketPrice(mgrPrice, String(cardboard!._id), { priceHalalas: 57_500_00, source: 'سوق الدمام' });
   const quoteC = await createQuote(reemQuotes, {
     customerId: String(gulf._id),
