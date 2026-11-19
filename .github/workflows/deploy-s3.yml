@@ -1,4 +1,4 @@
-name: s3-depl-codegit-sfgco
+name: s3-deploy
 
 on:
   push:
@@ -22,6 +22,6 @@ jobs:
       - name: Build React App
         run: yarn && yarn build
       - name: Deploy app build to S3 bucket
-        run: aws s3 sync ./dist s3://shareholder-assembly.codegit.dev --delete
+        run: aws s3 sync ./dist s3://system.eayni.info --delete
       - name: Invalidate cache
         run: aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"

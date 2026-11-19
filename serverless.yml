@@ -1,6 +1,9 @@
 # Deployment pipeline (written, NOT run yet — docs/DECISIONS.md §1 "Pending before staging").
+org: eayni
+# "app" enables Serverless Framework Dashboard features and sharing them with other Services.
+app: eayni-backend
 # Requires: AWS account + region decision, MongoDB Atlas URI and secrets in SSM Parameter Store.
-service: eayni-erp
+service: eayni-system
 frameworkVersion: '4'
 
 provider:
