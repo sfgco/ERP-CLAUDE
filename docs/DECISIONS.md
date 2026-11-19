@@ -25,6 +25,15 @@ Last updated: 2026-11-12.
 | 11 | PDF renderer function (headless Chromium in its own Lambda) | certificates, letters, PDF exports — HTML output works meanwhile [HR §3.5, EP §14.3] |
 | 12 | Serverless Framework v4 license/account for `npx serverless deploy` | deploy pipeline |
 
+**Status 2026-11-19 (deploy-aws branch):** the AWS account exists (891377307981, `eayni.info` hosted zone and a
+`*.eayni.info` certificate in us-east-1), the Serverless org is `eayni` / app `eayni-backend` / service
+`eayni-system`, and the staging deploy is wired in `.github/workflows/deploy.yml` (docs/DEPLOY.md). Still to decide
+or do before the first deploy: item 1 — the **region**: `serverless.yml` defaults to `me-south-1`, every other
+resource in the account is in `us-east-1`, and `me-south-1` endpoints did not answer from the developer machine on
+2026-11-19 (set the GitHub variable `AWS_REGION` once decided); item 2 — Atlas URI and secrets in SSM; item 3 — the
+intended host is `system.eayni.info` (SSM `web-domain`, see docs/DEPLOY.md "Custom domain"); item 4 — SES; item 12 —
+the `SERVERLESS_ACCESS_KEY` repository secret.
+
 ## 2. Login and identity [EP §3, HR §6]
 - **Username = work email.** The employee number is shown in the profile but is not a login identifier. [EP §3.2, EP §7]
 - **Email + password now.** SSO is not decided; the auth layer keeps an adapter seam so an SSO provider can be added without touching the rest.

@@ -5,11 +5,10 @@
 # (go-live follow-up items 3 and 4), which keeps every file named in _deploy/files.txt: the complete file list of
 # the build uploaded here (not only what index.html references, since JS/CSS reference assets of their own).
 set -euo pipefail
-STAGE="${1:-staging}"
-BUCKET="eayni-erp-${STAGE}-web"
-DIST_ID="${2:-$(aws cloudformation describe-stacks --stack-name "eayni-erp-${STAGE}" \
-  --query "Stacks[0].Outputs[?OutputKey=='WebDistributionId'].OutputValue" --output text)}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+. "$HERE/stage-env.sh" "${1:-staging}"
+BUCKET="${WEB_BUCKET}"
+DIST_ID="${2:-$(stack_output WebDistributionId)}"
 
 npm run build -w apps/web
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT

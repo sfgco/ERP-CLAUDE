@@ -6,8 +6,8 @@
 # If the list is missing the script stops and deletes nothing.
 #   scripts/prune-web-assets.sh staging 14
 set -euo pipefail
-STAGE="${1:-staging}"; DAYS="${2:-14}"
-BUCKET="eayni-erp-${STAGE}-web"
+. "$(cd "$(dirname "$0")" && pwd)/stage-env.sh" "${1:-staging}"; DAYS="${2:-14}"
+BUCKET="${WEB_BUCKET}"
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
 if ! aws s3 cp "s3://${BUCKET}/_deploy/files.txt" "$tmp/files.txt" >/dev/null 2>&1; then
   echo "no _deploy/files.txt in ${BUCKET}: run scripts/deploy-web.sh ${STAGE} first; nothing removed" >&2

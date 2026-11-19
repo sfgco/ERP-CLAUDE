@@ -1,7 +1,29 @@
-# Deployment notes (written, not run — DECISIONS §1)
+# Deployment notes
 
-Nothing is deployed yet. This file records how the stack in `serverless.yml` is meant to run once the
-owner clears **DECISIONS §1 "Pending before staging"**. Never deploy to `prod` from a laptop.
+The stack in `serverless.yml` (service `eayni-system`, Serverless Framework v4, org `eayni`) is deployed to **staging**
+by the GitHub workflow `.github/workflows/deploy.yml` after the `CI` workflow succeeds on `main` or `deploy-aws`, or by
+hand with the commands below. Never deploy to `prod` from a workflow or a laptop. The open items of
+**DECISIONS §1** (region and data residency, SES domain, PDF renderer) still apply.
+
+## GitHub Actions
+
+| Workflow | Trigger | Does |
+|---|---|---|
+| `CI` (`ci.yml`) | push to `main` / `deploy-aws`, every PR | `npm ci`, lint, typecheck, tests, web build |
+| `Deploy staging` (`deploy.yml`) | `workflow_run` when `CI` succeeded on `main` / `deploy-aws`; manual `workflow_dispatch` | checks secrets and SSM parameters → `npx serverless deploy --stage staging` → `scripts/deploy-web.sh staging` → `scripts/smoke-staging.sh` checks (a)–(c) |
+
+Repository **secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | an IAM user for deployments: CloudFormation, Lambda, API Gateway, S3, CloudFront, Route 53, IAM (roles for the functions), SSM `GetParameter`, CloudWatch Logs, EventBridge |
+| `SERVERLESS_ACCESS_KEY` | Serverless Framework Dashboard access key for the `eayni` org (app `eayni-backend`); created at app.serverless.com → Org → Access keys |
+
+Repository **variable** (optional): `AWS_REGION` — overrides the default region in `serverless.yml` (`me-south-1`).
+The scripts read the same variable (`scripts/stage-env.sh`), so a hand deploy uses `AWS_REGION=… scripts/…`.
+
+The deploy job fails early with a clear message when a secret or an SSM parameter is missing. Deploys never run in
+parallel (`concurrency: deploy-staging`).
 
 ## Topology
 
@@ -94,7 +116,8 @@ Use an account without an authenticator for (d) (the script logs out at the end)
 
 ## SSM parameters to create before the first deploy
 
-All under `/eayni/<stage>/`. `first-deploy.sh` checks the first three and creates the last two when missing.
+All under `/eayni/<stage>/` **in the deployment region**. `first-deploy.sh` checks the first three and creates
+`origin-secret-previous` and `app-url` when missing.
 
 | Parameter | Type | Value |
 |---|---|---|
@@ -102,17 +125,39 @@ All under `/eayni/<stage>/`. `first-deploy.sh` checks the first three and create
 | `app-secret` | SecureString | ≥ 32 random chars: `openssl rand -base64 48`; rotation uses `APP_SECRET_PREVIOUS` |
 | `origin-secret` | SecureString | ≥ 32 random chars; CloudFront → API header |
 | `origin-secret-previous` | SecureString | `""` unless rotating |
-| `app-url` | String | `https://<distribution domain>`; placeholder on the very first deploy (see below) |
+| `app-url` | String | the stack output `WebUrl`: `https://<web-domain>` when a custom domain is set, else `https://<distribution domain>`; placeholder on the very first deploy (see below) |
+| `web-domain` | String | *optional* — custom host name for the web + API distribution, e.g. `system.eayni.info` |
+| `web-certificate-arn` | String | *optional, required with `web-domain`* — ACM certificate **in us-east-1** covering the host name |
+| `hosted-zone-id` | String | *optional* — Route 53 hosted zone id; when set the stack writes the A/AAAA alias records for `web-domain` |
+
+### Custom domain (DECISIONS §1 item 3)
+
+Without `web-domain` the app is served from `https://<id>.cloudfront.net`. To serve it from `system.eayni.info`
+(account 891377307981 already holds the `eayni.info` hosted zone `Z07969681TBQJF9F49HCS` and an issued
+`*.eayni.info` certificate in us-east-1):
+
+```bash
+P=/eayni/staging
+aws ssm put-parameter --name $P/web-domain --type String --value system.eayni.info
+aws ssm put-parameter --name $P/web-certificate-arn --type String \
+  --value arn:aws:acm:us-east-1:891377307981:certificate/d7506230-4b7d-41de-831d-7e773b911f49
+aws ssm put-parameter --name $P/hosted-zone-id --type String --value Z07969681TBQJF9F49HCS
+aws ssm put-parameter --name $P/app-url --type String --value https://system.eayni.info --overwrite
+```
+
+Then deploy. The distribution gets the alias and certificate, Route 53 gets the alias records, and the API's cookie
+and CORS origin follow `app-url`. Remove the three parameters (and reset `app-url`) to go back to the CloudFront domain.
 
 ## First deploy order (staging readiness item 2)
 
 `APP_URL` is read from SSM **at deploy time**, but the CloudFront domain exists only after the first deploy.
-`scripts/first-deploy.sh <stage> [email]` resolves that:
+`scripts/first-deploy.sh <stage> [email]` resolves that (run it once, by hand, with `AWS_REGION` set to the
+deployment region; afterwards the GitHub workflow handles every deploy):
 
 1. verifies the SSM parameters above, writes `https://placeholder.invalid` to `app-url` when it is missing;
 2. `npx serverless deploy --stage <stage>`;
-3. reads `WebDistributionDomain` and `HttpApiUrl` from the stack outputs;
-4. writes `https://<domain>` to `app-url` and **redeploys** (CORS, cookie origin, files-bucket CORS now point at it);
+3. reads `WebUrl` and `HttpApiUrl` from the stack outputs;
+4. writes `WebUrl` to `app-url` and **redeploys** (CORS, cookie origin, files-bucket CORS now point at it);
 5. `scripts/deploy-web.sh <stage>` then `scripts/smoke-staging.sh …`.
 
 Then create the first admin (item 1):
@@ -170,13 +215,28 @@ Prune stops and deletes nothing when `_deploy/files.txt` is missing (a bucket la
 | `/eayni/<stage>/origin-secret` | CloudFront origin header + API check (above) |
 | `/eayni/<stage>/origin-secret-previous` | accepted during a rotation; empty otherwise |
 
-## Deploy steps (staging)
+## Deploy steps (staging, by hand)
+
+Same three steps the workflow runs. All scripts source `scripts/stage-env.sh` (service name, stack name, bucket,
+region from `AWS_REGION`), so they follow a rename of `service:` in `serverless.yml` from one place.
 
 ```bash
-npx serverless deploy --stage staging
+export AWS_REGION=me-south-1              # the deployment region (vars.AWS_REGION in GitHub)
+npx serverless deploy --stage staging --region "$AWS_REGION"
 scripts/deploy-web.sh staging          # build, upload with the right cache headers, invalidate index.html
-scripts/smoke-staging.sh https://<distribution> https://<id>.execute-api.<region>.amazonaws.com you@eayni.local
+scripts/smoke-staging.sh https://<web url> https://<id>.execute-api.<region>.amazonaws.com you@eayni.local
 ```
+
+Serverless v4 needs the `eayni` org on the account you are logged in with (`npx serverless login`) or
+`SERVERLESS_ACCESS_KEY` in the environment; otherwise it stops with "You are not a member of the Org".
+
+### Lambda bundle
+
+`build.esbuild` bundles each handler with esbuild as **ESM emitted as `.mjs`** (`outExtension`). `apps/api` is
+`"type": "module"`, but the `package.json` the bundler ships next to the handler is generated from the root one, which
+is not, so a `.js` bundle would be loaded as CommonJS and fail on its first `import`. Handler paths in
+`serverless.yml` keep the `.handler` form; Lambda resolves the extension. Check a build locally with
+`npx serverless package --stage staging` and `unzip -Z1 .serverless/<function>.zip`.
 
 Scheduled jobs: every 5 minutes (`cadence: frequent`) and daily at 06:00 Asia/Riyadh (`cadence: daily`),
 see DECISIONS §19.

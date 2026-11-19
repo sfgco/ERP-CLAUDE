@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, deploy-aws]
   pull_request:
 
 jobs:
@@ -23,7 +23,5 @@ jobs:
           CI: 'true'
       - run: npm run build -w apps/web
 
-  # Deploy to staging is intentionally not wired: see docs/DECISIONS.md §1 "Pending before staging".
-  # When the AWS account, region and secrets exist, add a job here that runs
-  #   npx serverless deploy --stage staging
-  # on pushes to main, after `check` passes. Never deploy to prod from this workflow or a laptop.
+  # Staging deploy lives in deploy.yml: it is triggered by `workflow_run` when this workflow succeeds on `main`.
+  # Never deploy to prod from a workflow or a laptop (CLAUDE.md).

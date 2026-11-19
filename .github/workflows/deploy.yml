@@ -1,0 +1,72 @@
+# Staging deploy — runs after the CI workflow succeeds on `main` or `deploy-aws` (or by hand). Never deploys `prod`
+# (CLAUDE.md). One job, three steps: `serverless deploy` (API, outbox, jobs, buckets, CloudFront), the web build to
+# the stack's bucket (scripts/deploy-web.sh), then the public smoke checks (a)–(c) of scripts/smoke-staging.sh.
+#
+# Repository secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (an IAM user allowed to run CloudFormation, Lambda,
+# API Gateway, S3, CloudFront, Route 53, IAM roles, SSM GetParameter, Logs, EventBridge) and SERVERLESS_ACCESS_KEY
+# (Serverless Framework Dashboard key for the `eayni` org). Optional repository variable: AWS_REGION (defaults to the
+# region in serverless.yml). The SSM parameters under /eayni/staging/ must exist first — docs/DEPLOY.md.
+name: Deploy staging
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main, deploy-aws]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      STAGE: staging
+      AWS_REGION: ${{ vars.AWS_REGION || 'me-south-1' }}
+      SERVERLESS_ACCESS_KEY: ${{ secrets.SERVERLESS_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # the commit CI just checked (workflow_run) or the branch chosen in the dispatch dialog
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+      - name: Check required secrets
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          missing=""
+          for v in AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY SERVERLESS_ACCESS_KEY; do
+            [ -n "${!v}" ] || missing="$missing $v"
+          done
+          if [ -n "$missing" ]; then echo "::error::missing repository secrets:$missing"; exit 1; fi
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - run: npm ci
+      - name: Check SSM parameters
+        run: |
+          for p in mongodb-uri app-secret origin-secret app-url; do
+            aws ssm get-parameter --name "/eayni/${STAGE}/$p" >/dev/null \
+              || { echo "::error::missing SSM parameter /eayni/${STAGE}/$p — see docs/DEPLOY.md"; exit 1; }
+          done
+      - name: Deploy API stack
+        run: npx serverless deploy --stage "${STAGE}" --region "${AWS_REGION}"
+      - name: Deploy web app
+        run: scripts/deploy-web.sh "${STAGE}"
+      - name: Smoke check
+        run: |
+          . scripts/stage-env.sh "${STAGE}"
+          scripts/smoke-staging.sh "$(stack_output WebUrl)" "$(stack_output HttpApiUrl)"
