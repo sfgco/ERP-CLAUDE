@@ -351,5 +351,25 @@ Review of commit 82b0f54 before any deploy; fixed in four commits, one per group
 - **Seed:** one more block reaches the remaining states (a customer «غير مهتم», opportunities «قيد المعالجة» and «تم التواصل», quotes draft / sent / rejected / negotiating, an overdue invoice, sorting and cleaning requests, discussions «بانتظار الرد» and «مغلقة», meetings in every calendar status, a withdrawn target, last month's target). It runs last and logs a warning instead of stopping the seed if a step fails.
 - **Acceptance walk:** `docs/SALES_COVERAGE.md` now lists all 20 outputs of SAL §18 and the 13 recommendations of SAL §19 with the screen, the API and the test. Open after S5: sending email from the system (Q5), e-invoice issuance (Q4 / Finance phase 3), budget figures (Finance phase 4), discount limits and price list contents (Q1, Q6).
 
+## 21. HR module — plan approval (2026-11-24)
+`docs/HR_PLAN.md` was approved on 2026-11-24 **including its §10 (ten implementation choices) and the H3a/H3b split**. Coverage: `docs/HR_COVERAGE.md`; demo script: `docs/HR.md`; prompt: `docs/prompts/hr.md`.
+
+### Defaults accepted (plan §11) with the owner's corrections
+- **Q1–Q4, Q6, Q9–Q15** as proposed in the plan. Labor-law figures stay proposals in settings until confirmed by the HR team where marked provisional below.
+- **Q5 overtime:** pre-approval through the request type «طلب عمل إضافي» approved by the direct manager (Q16); rate per art. 107 (150 % of the basic hourly wage); rounding 15 min; no cap. **Compensation mode is a setting `hr.overtime.compensation` with the values pay / leave / employee_choice, default `pay`.** Leave compensation follows the 2025 amendment: **1.5 hours of leave per overtime hour**, to be taken **within 60 days** unless otherwise agreed (setting), **up to 30 days a year**, and **any unused balance is paid on leaving** (settlement line). Overtime-leave is a leave type in the ledger. [HR §3.4 رابعاً, §3.6.5, §3.10.4]
+- **Q7 leave (2025 amendments):** the plan's list plus **bereavement of a brother or sister: 3 days**; the father's **3-day birth leave must be taken within 7 days of the birth** (validated on the request dates); **maternity 12 weeks confirmed, at least 6 of them immediately after the birth** (validated on the request). Whole days only; annual over balance refused, others flagged; opening balances entered by HR. [HR §3.5.1]
+- **Q8 GOSI:** the rate depends on **when a Saudi employee first joined GOSI**, not only on nationality. Rates are an **effective-dated table** (setting `hr.payroll.gosiRates`) with three groups: **Saudi joined before 3 July 2024** (employee 9.75 %, employer 11.75 %), **Saudi joined on or after 3 July 2024** (annuity share rises 0.5 points every July until 11 % in July 2028; since July 2026 employee 10.75 %, employer 12.75 %), **non-Saudi** (employer 2 %). **The employee file gains `gosiJoinDate`** (HR-edited, visible to HR, Finance and the employee). [HR §3.6.3]
+- **Q16** overtime is a request type approved by the direct manager (HR not in the route). **Q17** only HR may enter a manual punch (audited, with reason). **Q18** one payroll run per period for everyone; `contractor` employment type excluded.
+
+### Provisional until the HR team confirms — screens show «مؤقت حتى اعتماد الموارد البشرية»
+| # | Value | Setting |
+|---|---|---|
+| Q1 | working hours 08:00–16:00 Sun–Thu and Ramadan 10:00–16:00 | `hr.attendance.defaultShift` |
+| Q2 | the sample sites and their coordinates (real sites come later; H1 starts with the samples) | org sites seed |
+| Q7 | the cooperative's own leave types (e.g. اضطرارية) and their entitlements | `hr.leave.policies` |
+| Q8 | the allowance list; cut-off (25th) and pay (27th) dates | `hr.payroll.allowanceTypes`, `cutoffDay`, `payDay` |
+| Q11 | the warnings ladder — must match the approved لائحة تنظيم العمل | `hr.discipline.ladder` |
+Every setting carries a `provisional: true` flag that the admin clears on confirmation; the flag drives the label.
+
 ## Still open (ask before building)
 Everything in the "Open decisions" section of `CLAUDE.md` that is not settled above, notably: accounting depth / general ledger, ZATCA route and wave, financial authority matrix and monthly cut-off, customer app and company portal, offline support for field staff, discount limits, points and rewards policy, certificate weight criterion, impact factors, organization-type list (SAL §4.1 vs CS §6.8), Finance-stage state labels in other modules (FIN §5 vs PRC §4 and MKT §8).
