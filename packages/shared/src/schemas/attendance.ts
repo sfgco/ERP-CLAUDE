@@ -476,8 +476,18 @@ export const attendanceRulesSchema = z.object({
   /** «إشعار الموظف عند نسيان تسجيل الحضور أو الانصراف»: minutes after start / end before the reminder. */
   missedCheckInAlertMinutes: z.number().int().min(0).max(600),
   missedCheckOutAlertMinutes: z.number().int().min(0).max(600),
+  /**
+   * How a late check-in is counted once it is beyond the grace (owner request 2026-11-24, provisional until HR confirms):
+   * `from_start` = the whole lateness from the shift start (20 min late with 15 min grace counts 20);
+   * `beyond_grace` = only the minutes beyond the grace (5). Payroll (H3a) reads `lateMinutes` as stored.
+   */
+  latenessCounting: z.enum(['from_start', 'beyond_grace']).optional(),
 });
 export type AttendanceRules = z.infer<typeof attendanceRulesSchema>;
+export const LATENESS_COUNTING_AR: Record<'from_start' | 'beyond_grace', string> = {
+  from_start: 'كامل التأخير من بداية الدوام',
+  beyond_grace: 'الدقائق بعد فترة السماح فقط',
+};
 
 export const locationPolicySchema = z.object({
   requireLocation: z.boolean(),

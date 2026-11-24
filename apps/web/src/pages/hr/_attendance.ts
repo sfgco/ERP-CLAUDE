@@ -62,12 +62,12 @@ export interface AttendancePolicy {
   defaultShift: { code: string; nameAr: string; periods: { start: string; end: string }[]; ramadanPeriods: { start: string; end: string }[]; workDays: number[] } | null;
   geofenceDefaultRadiusM: number;
   locationPolicy: { requireLocation: boolean; maxAccuracyFactor: number; onUnavailable: string };
-  rules: { graceMinutes: number; earlyLeaveGraceMinutes: number; missedCheckInAlertMinutes: number; missedCheckOutAlertMinutes: number };
+  rules: { graceMinutes: number; earlyLeaveGraceMinutes: number; missedCheckInAlertMinutes: number; missedCheckOutAlertMinutes: number; latenessCounting: 'from_start' | 'beyond_grace' };
   overtime: { requiresPreApproval: boolean; compensation: 'pay' | 'leave' | 'employee_choice'; rateBp: number };
   correction: { deadlineDays: number; perMonth: number | null };
   exceptionMaxDays: number;
   leavePolicies: Record<LeaveType, { entitlementDays: number | null; requiresAttachment: boolean; provisional: boolean; articleAr?: string }>;
-  provisional: { shift: boolean; geofence: boolean; leave: boolean };
+  provisional: { shift: boolean; geofence: boolean; leave: boolean; rules: boolean };
 }
 
 export const useAttendancePolicy = () =>

@@ -73,17 +73,18 @@ attendanceRouter.get(
   '/policy',
   requireAuth(),
   asyncHandler(async (_req, res) => {
-    const [shiftCode, radius, location, rules, overtime, correction, exceptionMaxDays, leavePolicies] = await Promise.all([
+    const [shiftCode, radius, location, rulesMeta, overtime, correction, exceptionMaxDays, leavePolicies] = await Promise.all([
       getSettingMeta('hr.attendance.defaultShiftCode'),
       getSettingMeta('hr.attendance.geofenceDefaultRadiusM'),
       getSetting('hr.attendance.locationPolicy'),
-      getSetting('hr.attendance.rules'),
+      getSettingMeta('hr.attendance.rules'),
       getSetting('hr.overtime'),
       getSetting('hr.attendance.correction'),
       getSetting('hr.attendance.exceptionMaxDays'),
       getSettingMeta('hr.leave.policies'),
     ]);
     const shift = await att.defaultShift();
+    const rules = { ...rulesMeta.value, latenessCounting: rulesMeta.value.latenessCounting ?? 'from_start' };
     res.json({
       defaultShift: shift
         ? { code: shift.code, nameAr: shift.nameAr, periods: shift.periods, ramadanPeriods: shift.ramadanPeriods, workDays: shift.workDays }
@@ -96,7 +97,7 @@ attendanceRouter.get(
       exceptionMaxDays,
       leavePolicies: leavePolicies.value,
       // «مؤقت حتى اعتماد الموارد البشرية» (DECISIONS §21): which parts still wait for the HR team.
-      provisional: { shift: shiftCode.provisional, geofence: radius.provisional, leave: leavePolicies.provisional },
+      provisional: { shift: shiftCode.provisional, geofence: radius.provisional, leave: leavePolicies.provisional, rules: rulesMeta.provisional },
     });
   }),
 );

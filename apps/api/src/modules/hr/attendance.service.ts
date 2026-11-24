@@ -513,7 +513,8 @@ export async function computeDay(employee: EmployeeDoc, day: string, now = new D
       else status = 'missing_in';
     } else {
       const late = minutesBetween(expectedStart, firstIn);
-      row.lateMinutes = late > grace ? late : 0;
+      // Provisional rule (owner 2026-11-24): the whole lateness from the start, or only the minutes beyond the grace.
+      row.lateMinutes = late > grace ? (c.rules.latenessCounting === 'beyond_grace' ? late - grace : late) : 0;
       if (openIn && !lastOut) {
         // Checked in, never out.
         if (row.final) {

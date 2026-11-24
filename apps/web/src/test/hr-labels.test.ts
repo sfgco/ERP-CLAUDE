@@ -6,6 +6,7 @@ import {
   LEAVE_ENTRY_TYPE_AR,
   PUNCH_TYPE_AR,
   SHIFT_KIND_AR,
+  LATENESS_COUNTING_AR,
   CONTRACT_STATUS_AR,
   CONTRACT_TYPE_AR,
   EMPLOYEE_STATUS_AR,
@@ -38,6 +39,7 @@ const pairs: [string, Record<string, string>, Record<string, string>][] = [
   ['attendance.punchTypes', PUNCH_TYPE_AR, ar.attendance.punchTypes],
   ['shifts.kinds', SHIFT_KIND_AR, ar.shifts.kinds],
   ['leave.entryTypes', LEAVE_ENTRY_TYPE_AR, ar.leave.entryTypes],
+  ['attendance.latenessCounting', LATENESS_COUNTING_AR, ar.attendance.latenessCounting],
 ];
 
 describe('HR enum labels: shared package and Arabic locale agree', () => {

@@ -2611,7 +2611,12 @@
       "manualSaved": "أُضيفت البصمة وأُعيد احتساب اليوم",
       "recomputed": "أُعيد احتساب {{days}} يوماً"
     },
-    "metersShort": "{{n}} م"
+    "metersShort": "{{n}} م",
+    "latenessRule": "قاعدة احتساب التأخير",
+    "latenessCounting": {
+      "from_start": "كامل التأخير من بداية الدوام",
+      "beyond_grace": "الدقائق بعد فترة السماح فقط"
+    }
   },
   "shifts": {
     "title": "الجداول والورديات",

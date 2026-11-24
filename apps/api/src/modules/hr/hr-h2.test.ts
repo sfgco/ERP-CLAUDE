@@ -249,6 +249,12 @@ describe('H2 §3.4 رابعاً — the computed day: lateness, absence, hours, 
     await insertPunch(a.employeeId, '2026-11-17', 'out', '15:30');
     d = await computeDay(e, '2026-11-17', now);
     expect(d).toMatchObject({ status: 'late', lateMinutes: 25, earlyLeaveMinutes: 30 });
+    // Provisional lateness rule (owner 2026-11-24): `beyond_grace` counts only the minutes past the grace (25 − 10 = 15).
+    const rules = await (await import('../../core/settings/service')).getSetting('hr.attendance.rules');
+    await setSetting('hr.attendance.rules', { ...rules, latenessCounting: 'beyond_grace' }, SYSTEM_ACTOR);
+    expect((await computeDay(e, '2026-11-17', now)).lateMinutes).toBe(15);
+    await setSetting('hr.attendance.rules', { ...rules, latenessCounting: 'from_start' }, SYSTEM_ACTOR);
+    expect((await computeDay(e, '2026-11-17', now)).lateMinutes).toBe(25);
     // No punches on a scheduled day → absent; check-in without check-out → missing_out, hours not counted (Q4).
     expect((await computeDay(e, '2026-11-18', now)).status).toBe('absent');
     await insertPunch(a.employeeId, '2026-11-19', 'in', '08:00');
@@ -493,9 +499,11 @@ describe('H2 §3.4 خامساً — reports, dashboard cards, provisional settin
     const settings = await request(app()).get('/api/v1/settings').set(auth(admin));
     const leavePol = settings.body.items.find((s: { key: string }) => s.key === 'hr.leave.policies');
     expect(leavePol.provisional).toBe(true);
-    expect(settings.body.items.find((s: { key: string }) => s.key === 'hr.attendance.rules').provisional).toBe(false);
+    expect(settings.body.items.find((s: { key: string }) => s.key === 'hr.attendance.rules').provisional).toBe(true); // lateness rule awaits HR
+    expect(settings.body.items.find((s: { key: string }) => s.key === 'hr.attendance.locationPolicy').provisional).toBe(false);
     let policy = await request(app()).get('/api/v1/hr/attendance/policy').set(auth(a.token));
-    expect(policy.body.provisional).toEqual({ shift: true, geofence: true, leave: true });
+    expect(policy.body.provisional).toEqual({ shift: true, geofence: true, leave: true, rules: true });
+    expect(policy.body.rules.latenessCounting).toBe('from_start');
     expect(policy.body.rules.graceMinutes).toBe(10);
     expect((await request(app()).post('/api/v1/settings/hr.leave.policies/confirm').set(auth(hr))).status).toBe(403);
     expect((await request(app()).post('/api/v1/settings/hr.leave.policies/confirm').set(auth(admin))).status).toBe(200);

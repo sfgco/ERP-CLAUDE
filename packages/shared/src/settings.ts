@@ -410,7 +410,7 @@ export const SETTING_DEFINITIONS = {
     key: 'hr.attendance.rules',
     labelAr: 'قواعد التأخير والغياب والانصراف المبكر والتنبيه بنسيان التسجيل (دقائق)',
     descriptionAr:
-      'Q4: سماح 10 دقائق، الغياب = لا تسجيل حضور حتى نهاية الدوام، نسيان الانصراف يُعلَّم وتنتظر ساعاته طلب تعديل',
+      'Q4: سماح 10 دقائق، الغياب = لا تسجيل حضور حتى نهاية الدوام، نسيان الانصراف يُعلَّم وتنتظر ساعاته طلب تعديل. latenessCounting: from_start = كامل التأخير من بداية الدوام (20 دقيقة مع سماح 15 تُحسب 20) أو beyond_grace = ما بعد السماح فقط (5) — مؤقت حتى اعتماد الموارد البشرية',
     group: 'hr',
     schema: attendanceRulesSchema,
     default: {
@@ -420,7 +420,9 @@ export const SETTING_DEFINITIONS = {
       missingCheckoutPolicy: 'wait_correction' as const,
       missedCheckInAlertMinutes: 30,
       missedCheckOutAlertMinutes: 60,
+      latenessCounting: 'from_start' as const,
     },
+    provisional: true,
   }),
   'hr.overtime': def({
     key: 'hr.overtime',

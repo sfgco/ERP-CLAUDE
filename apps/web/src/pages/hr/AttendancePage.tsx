@@ -93,7 +93,12 @@ export function HrAttendancePage() {
           </>
         }
       />
-      {policy.data?.provisional.shift && <Alert kind="warning">{t('attendance.provisional')} — {t('attendance.provisionalHint')}</Alert>}
+      {(policy.data?.provisional.shift || policy.data?.provisional.rules) && (
+        <Alert kind="warning">
+          {t('attendance.provisional')} — {t('attendance.provisionalHint')}
+          {policy.data?.rules.latenessCounting && ` · ${t('attendance.latenessRule')}: ${t(`attendance.latenessCounting.${policy.data.rules.latenessCounting}`)}`}
+        </Alert>
+      )}
       <Card className="mt-3">
         <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
           <Field label={t('attendance.from')}>
