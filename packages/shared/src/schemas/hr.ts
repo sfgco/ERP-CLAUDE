@@ -115,6 +115,8 @@ export const createEmployeeSchema = z.object({
     })
     .optional(),
   medicalInsurance: z.boolean().default(false),
+  /** First GOSI registration date — drives the contribution-rate group (DECISIONS §21 Q8) [HR §3.6.3]. */
+  gosiJoinDate: z.coerce.date().nullable().optional(),
   /** Create the portal account now (temporary password returned once). */
   createAccount: z.boolean().default(true),
 });
@@ -172,6 +174,9 @@ export const listEmployeesQuerySchema = z.object({
   branchId: objectIdSchema.optional(),
   status: z.enum(EMPLOYEE_STATUSES).optional(),
   managerId: objectIdSchema.optional(),
+  /** Dashboard drill-downs «حسب الجنسية ونوع التوظيف» [HR §5 أولاً]. */
+  nationality: z.string().trim().max(60).optional(),
+  employmentType: z.enum(EMPLOYMENT_TYPES).optional(),
   /** Employees whose probation ends within N days (go-live review H5, HR dashboard drill-down). */
   probationWithinDays: z.coerce.number().int().min(1).max(365).optional(),
   page: z.coerce.number().int().min(1).default(1),

@@ -143,6 +143,7 @@ function DataTab({ e, canEdit }: { e: EmployeeFull; canEdit: boolean }) {
       city: e.address?.city ?? '',
       postalCode: e.address?.postalCode ?? '',
       basicSalary: e.basicSalaryHalalas !== undefined ? String(e.basicSalaryHalalas / 100) : '',
+      gosiJoinDate: e.gosiJoinDate?.slice(0, 10) ?? '',
       bankName: e.bank?.bankName ?? '',
       iban: e.bank?.iban ?? '',
     });
@@ -169,6 +170,7 @@ function DataTab({ e, canEdit }: { e: EmployeeFull; canEdit: boolean }) {
           postalCode: v.postalCode,
         },
         basicSalaryHalalas: v.basicSalary ? Math.round(Number(v.basicSalary) * 100) : undefined,
+        gosiJoinDate: v.gosiJoinDate || null,
       };
       if (v.identityNumber)
         body.identity = {
@@ -265,6 +267,10 @@ function DataTab({ e, canEdit }: { e: EmployeeFull; canEdit: boolean }) {
             label={t('hr.medicalInsurance')}
             value={e.medicalInsurance ? t('common.yes') : t('common.no')}
           />
+          <Row
+            label={t('hr.gosiJoinDate')}
+            value={e.gosiJoinDate ? formatDate(e.gosiJoinDate) : undefined}
+          />
         </dl>
       </Card>
       <Dialog open={edit} onClose={() => setEdit(false)} title={t('actions.edit')}>
@@ -306,6 +312,9 @@ function DataTab({ e, canEdit }: { e: EmployeeFull; canEdit: boolean }) {
             </Field>
             <Field label={t('hr.basicSalary')}>
               <Input dir="ltr" inputMode="decimal" {...form.register('basicSalary')} />
+            </Field>
+            <Field label={t('hr.gosiJoinDate')}>
+              <Input type="date" dir="ltr" {...form.register('gosiJoinDate')} />
             </Field>
             <Field label={t('hr.bank')}>
               <Input {...form.register('bankName')} />
@@ -482,6 +491,10 @@ function JobTab({ e, canEdit }: { e: EmployeeFull; canEdit: boolean }) {
           <Row label={t('admin.users.department')} value={lk.deptName(e.departmentId)} />
           <Row label={t('hr.unit')} value={lk.unitName(e.unitId)} />
           <Row label={t('hr.position')} value={lk.positionName(e.positionId)} />
+          <Row
+            label={t('hr.jobDescription')}
+            value={lk.positions.find((p) => p._id === e.positionId)?.descriptionAr}
+          />
           <Row label={t('hr.grade')} value={e.grade} />
           <Row
             label={t('hr.directManager')}
@@ -494,7 +507,7 @@ function JobTab({ e, canEdit }: { e: EmployeeFull; canEdit: boolean }) {
             }
           />
           <Row label={t('admin.org.branch')} value={lk.branchName(e.branchId)} />
-          <Row label={t('admin.org.sites')} value={lk.siteName(e.siteId)} />
+          <Row label={t('hr.site')} value={lk.siteName(e.siteId)} />
           <Row label={t('hr.employmentType')} value={t(`hr.employmentTypes.${e.employmentType}`)} />
           <Row label={t('hr.hireDate')} value={formatDate(e.hireDate)} />
           <Row label={t('hr.endDate')} value={e.endDate ? formatDate(e.endDate) : undefined} />

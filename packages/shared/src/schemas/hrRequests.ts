@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { objectIdSchema } from './common';
+import { objectIdSchema, riyadhDaySchema } from './common';
 
 /** Self-service request types [HR §3.5]. */
 export const HR_REQUEST_TYPES = [
@@ -127,6 +127,13 @@ export const listHrRequestsQuerySchema = z.object({
   type: z.enum(HR_REQUEST_TYPES).optional(),
   state: z.string().optional(),
   open: z.coerce.boolean().optional(),
+  /** Only requests still awaiting a decision (not returned for completion) — the dashboard's «الطلبات المعلقة» [HR §5]. */
+  pending: z.coerce.boolean().optional(),
+  /** Decided approved / rejected, whether or not closed since — the dashboard's «المعتمدة» / «المرفوضة» [HR §5]. */
+  outcome: z.enum(['approved', 'rejected']).optional(),
+  /** Submission date window (Riyadh days, inclusive) — the dashboard's «الطلبات الجديدة» [HR §5]. */
+  from: riyadhDaySchema.optional(),
+  to: riyadhDaySchema.optional(),
   employeeId: objectIdSchema.optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(200).default(25),

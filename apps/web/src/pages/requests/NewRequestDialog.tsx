@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Paperclip } from 'lucide-react';
 import { HR_REQUEST_TYPES, type HrRequestType } from '@eayni/shared';
-import { get, post } from '@/lib/api';
+import { del, get, post, put } from '@/lib/api';
 import { errorMessage, fieldErrorsFrom } from '@/lib/errors';
 import { Alert, Button, Dialog, Field, Select } from '@/shared/ui';
 import { RequestFields, detailsFromForm, type RequestFormValues } from './_form';
@@ -16,6 +16,8 @@ interface TypeInfo {
   labelAr: string;
   route: { viaManager: boolean; finalApprover: string };
 }
+
+const DRAFT_KEY = 'hr_request';
 
 /** "رفع طلب" [EP §11]: one form, fields switch per type exactly as HR §3.5 lists them. */
 export function NewRequestDialog({
@@ -43,6 +45,48 @@ export function NewRequestDialog({
   });
   const info = types.data?.items.find((i) => i.type === type);
 
+  // Drafts [HR §7.5 «حفظ الطلبات والمعاملات كمسودات واستكمالها لاحقاً»]: one draft per user for the request form,
+  // kept in the platform drafts store until the request is submitted or the draft is discarded.
+  type Draft = { _id: string; data: { type: HrRequestType; values: RequestFormValues; attachments: typeof attachments } };
+  const drafts = useQuery({
+    queryKey: ['drafts', DRAFT_KEY],
+    queryFn: () => get<{ items: Draft[] }>(`/drafts?formKey=${DRAFT_KEY}`),
+    enabled: open,
+  });
+  const draft = drafts.data?.items[0];
+  const [draftResumed, setDraftResumed] = useState(false);
+  const resumeDraft = () => {
+    if (!draft) return;
+    setType(draft.data.type);
+    form.reset(draft.data.values);
+    setAttachments(draft.data.attachments ?? []);
+    setDraftResumed(true);
+  };
+  const saveDraft = async () => {
+    try {
+      await put('/drafts', {
+        formKey: DRAFT_KEY,
+        data: { type, values: form.getValues(), attachments },
+      });
+      qc.invalidateQueries({ queryKey: ['drafts', DRAFT_KEY] });
+      toast(t('requests.draftSaved'));
+      onClose();
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
+  const discardDraft = async () => {
+    if (!draft) return;
+    try {
+      await del(`/drafts/${draft._id}`);
+      qc.invalidateQueries({ queryKey: ['drafts', DRAFT_KEY] });
+      setDraftResumed(false);
+      toast(t('requests.draftDiscarded'));
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
+
   const submit = form.handleSubmit(async (v) => {
     setError(undefined);
     try {
@@ -53,6 +97,10 @@ export function NewRequestDialog({
         notes: v.generalNotes || undefined,
       });
       toast(t('requests.submitted'));
+      if (draft) {
+        await del(`/drafts/${draft._id}`).catch(() => undefined);
+        qc.invalidateQueries({ queryKey: ['drafts', DRAFT_KEY] });
+      }
       qc.invalidateQueries({ queryKey: ['hr-requests'] });
       form.reset();
       setAttachments([]);
@@ -69,6 +117,19 @@ export function NewRequestDialog({
     <Dialog open={open} onClose={onClose} title={t('requests.new')}>
       <form onSubmit={submit} className="space-y-3" noValidate>
         {error && <Alert kind="error">{error}</Alert>}
+        {draft && !draftResumed && (
+          <Alert kind="info">
+            <div className="flex flex-wrap items-center gap-2">
+              <span>{t('requests.draftFound', { type: t(`requests.types.${draft.data.type}`) })}</span>
+              <Button type="button" variant="secondary" onClick={resumeDraft}>
+                {t('requests.resumeDraft')}
+              </Button>
+              <button type="button" className="text-xs underline" onClick={discardDraft}>
+                {t('requests.discardDraft')}
+              </button>
+            </div>
+          </Alert>
+        )}
         <Field label={t('requests.type')}>
           <Select value={type} onChange={(e) => setType(e.target.value as HrRequestType)}>
             {HR_REQUEST_TYPES.map((x) => (
@@ -100,6 +161,9 @@ export function NewRequestDialog({
         <div className="flex justify-end gap-2">
           <Button type="button" variant="secondary" onClick={onClose}>
             {t('actions.cancel')}
+          </Button>
+          <Button type="button" variant="secondary" onClick={saveDraft}>
+            {t('requests.saveDraft')}
           </Button>
           <Button type="submit" loading={form.formState.isSubmitting}>
             {t('requests.submit')}

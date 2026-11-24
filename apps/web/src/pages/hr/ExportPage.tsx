@@ -43,6 +43,18 @@ export function ExportPage() {
   const [resource, setResource] = useState('');
   const [fields, setFields] = useState<string[]>([]);
   const [filters, setFilters] = useState<Record<string, string>>({});
+  // «تحديد الموظفين المستهدفين» [HR §4 step 2]: chosen ids travel as `filters.employeeIds`; empty = everyone in scope.
+  const [chosen, setChosen] = useState<{ _id: string; fullNameAr: string; employeeNumber: string }[]>([]);
+  const [empSearch, setEmpSearch] = useState('');
+  const empResults = useQuery({
+    queryKey: ['export', 'employee-search', empSearch],
+    queryFn: () =>
+      get<{ items: { _id: string; fullNameAr: string; employeeNumber: string }[] }>(
+        `/hr/employees?limit=10&q=${encodeURIComponent(empSearch)}`,
+      ),
+    enabled: empSearch.trim().length >= 2,
+  });
+  const employeeAware = resource === 'employees' || resource === 'hr.documents_expiring';
   const current = useMemo(
     () => resources.data?.items.find((r) => r.resource === resource),
     [resources.data, resource],
@@ -58,8 +70,10 @@ export function ExportPage() {
         .map((f) => f.key) ?? [],
     );
     setFilters({});
+    setChosen([]);
   }, [current]);
-  const cleanFilters = Object.fromEntries(Object.entries(filters).filter(([, v]) => v));
+  const cleanFilters: Record<string, unknown> = Object.fromEntries(Object.entries(filters).filter(([, v]) => v));
+  if (employeeAware && chosen.length) cleanFilters.employeeIds = chosen.map((c) => c._id);
   const preview = useMutation({
     mutationFn: () =>
       api<{
@@ -147,6 +161,106 @@ export function ExportPage() {
               </ul>
               {hasSensitive && <Alert kind="warning">{t('export.sensitiveHint')}</Alert>}
             </Card>
+            {employeeAware && (
+              <Card title={t('export.employees')}>
+                <p className="mb-2 text-xs text-slate-500">{t('export.employeesHint')}</p>
+                <Input
+                  value={empSearch}
+                  onChange={(e) => setEmpSearch(e.target.value)}
+                  placeholder={t('export.searchEmployee')}
+                  aria-label={t('export.searchEmployee')}
+                />
+                {empSearch.trim().length >= 2 && (
+                  <ul className="mt-1 max-h-40 divide-y divide-slate-100 overflow-auto rounded-lg border border-slate-200 text-sm">
+                    {(empResults.data?.items ?? [])
+                      .filter((x) => !chosen.some((c) => c._id === x._id))
+                      .map((x) => (
+                        <li key={x._id}>
+                          <button
+                            type="button"
+                            className="flex w-full items-center justify-between px-3 py-1.5 text-start hover:bg-slate-50"
+                            onClick={() => {
+                              setChosen((c) => [...c, x]);
+                              setEmpSearch('');
+                            }}
+                          >
+                            <span>{x.fullNameAr}</span>
+                            <span dir="ltr" className="text-xs text-slate-500">
+                              {x.employeeNumber}
+                            </span>
+                          </button>
+                        </li>
+                      ))}
+                    {empResults.data && !empResults.data.items.length && (
+                      <li className="px-3 py-1.5 text-xs text-slate-500">{t('common.empty')}</li>
+                    )}
+                  </ul>
+                )}
+                {chosen.length > 0 && (
+                  <div className="mt-2 flex flex-wrap items-center gap-1">
+                    {chosen.map((c) => (
+                      <button
+                        key={c._id}
+                        type="button"
+                        className="rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-700 hover:bg-brand-100"
+                        onClick={() => setChosen((s) => s.filter((x) => x._id !== c._id))}
+                        aria-label={`${t('actions.delete')} ${c.fullNameAr}`}
+                      >
+                        {c.fullNameAr} ×
+                      </button>
+                    ))}
+                    <span className="text-xs text-slate-500">{t('export.chosen', { count: chosen.length })}</span>
+                    <button type="button" className="text-xs text-slate-500 underline" onClick={() => setChosen([])}>
+                      {t('export.clearEmployees')}
+                    </button>
+                  </div>
+                )}
+              </Card>
+            )}
+            {resource === 'hr.documents_expiring' && (
+              <Card title={t('export.filters')}>
+                <div className="space-y-2">
+                  <Field label={t('export.within')}>
+                    <Select
+                      value={filters.within ?? '90'}
+                      onChange={(e) => setFilters((s) => ({ ...s, within: e.target.value }))}
+                    >
+                      {[30, 60, 90, 180, 365].map((n) => (
+                        <option key={n} value={String(n)}>
+                          {t('hr.expiring.withinDays', { days: n })}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label={t('export.kind')}>
+                    <Select
+                      value={filters.kind ?? ''}
+                      onChange={(e) => setFilters((s) => ({ ...s, kind: e.target.value }))}
+                    >
+                      <option value="">{t('export.allKinds')}</option>
+                      {(['contracts', 'identities', 'documents'] as const).map((k) => (
+                        <option key={k} value={k}>
+                          {t(`hr.expiring.kinds.${k}`)}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label={t('hr.department')}>
+                    <Select
+                      value={filters.departmentId ?? ''}
+                      onChange={(e) => setFilters((s) => ({ ...s, departmentId: e.target.value }))}
+                    >
+                      <option value="">{t('common.all')}</option>
+                      {lk.departments.map((x) => (
+                        <option key={x._id} value={x._id}>
+                          {x.nameAr}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+              </Card>
+            )}
             {resource === 'employees' && (
               <Card title={t('export.filters')}>
                 <div className="space-y-2">

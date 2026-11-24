@@ -7,7 +7,7 @@ import {
   type HrRequestType,
 } from '@eayni/shared';
 import { badRequest, forbidden, notFound } from '../../core/http/errors';
-import type { Actor, Authz } from '../../core/http/context';
+import { SYSTEM_ACTOR, type Actor, type Authz } from '../../core/http/context';
 import { recordAudit } from '../../core/audit/service';
 import { nextNumber } from '../../core/numbering/service';
 import { notify } from '../../core/notifications/service';
@@ -564,3 +564,67 @@ export async function runRequestOverdueReminders(now = new Date()): Promise<numb
 }
 
 export { HR_ROLES };
+
+/**
+ * «المرحلة الرابعة: إغلاق الطلب … أرشفة الطلب إلكترونياً» [HR §3.5]: a decided request (معتمد / مرفوض) is closed by the
+ * system after `hr.requestAutoCloseBusinessDays` business days, through the workflow's `close` transition, so the
+ * stage log and the action log record the archive step. HR may still close by hand before that. Daily job.
+ */
+export async function runRequestAutoClose(now = new Date()): Promise<number> {
+  const days = (await getSetting('hr.requestAutoCloseBusinessDays')) ?? 5;
+  const { loadHolidaySet, addBusinessDays } = await import('../../core/dates/businessDays');
+  const holidays = await loadHolidaySet();
+  // A decision already stamps `closedAt` (the request is done); the archive step is the move to «مغلق».
+  const candidates = await HrRequest.find({ deletedAt: null, state: { $in: ['approved', 'rejected'] } });
+  let closed = 0;
+  for (const r of candidates) {
+    const decidedAt = r.decision?.at ?? r.stateEnteredAt;
+    if (addBusinessDays(decidedAt, days, holidays) > now) continue;
+    const def = await getWorkflow('hr_request');
+    if (!def.transitions.some((x) => x.code === 'close' && x.from.includes(r.state))) continue;
+    const fromState = r.state;
+    await withTransaction(async (session) => {
+      await applyTransition({
+        def,
+        record: r.toObject() as never,
+        recordType: 'hr_request',
+        transition: 'close',
+        actor: SYSTEM_ACTOR,
+        actorRelations: ['system'],
+        reason: 'أُغلق وأُرشف تلقائياً بعد انتهاء مهلة الإغلاق',
+        departmentId: r.departmentId ? String(r.departmentId) : undefined,
+        now,
+        session,
+        persist: async (fields) => {
+          const u = await HrRequest.updateOne(
+            { _id: r._id, state: fromState },
+            { $set: { ...fields, closedAt: r.closedAt ?? now, pendingWith: null } },
+            { session },
+          );
+          return u.modifiedCount === 1;
+        },
+      });
+      await HrRequestAction.create(
+        [
+          {
+            requestId: r._id,
+            action: 'close',
+            fromState,
+            toState: 'closed',
+            actorRole: 'system',
+            note: 'أرشفة تلقائية',
+            at: now,
+          },
+        ],
+        { session },
+      );
+      await recordAudit(
+        SYSTEM_ACTOR,
+        { action: 'update', resource: 'hr.requests', resourceId: String(r._id), before: { state: fromState }, after: { state: 'closed' } },
+        session,
+      );
+      closed++;
+    });
+  }
+  return closed;
+}

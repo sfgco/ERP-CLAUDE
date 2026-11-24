@@ -34,6 +34,7 @@ interface MyProfile extends EmployeeFull {
     department?: string;
     unit?: string;
     position?: string;
+    jobDescription?: string;
     branch?: string;
     site?: string;
     directManager?: string;
@@ -406,16 +407,16 @@ export function ProfilePage() {
           <dl>
             <Row label={t('hr.employeeNumber')} value={e.employeeNumber} dir="ltr" />
             <Row label={t('hr.position')} value={e.labels.position} />
+            <Row label={t('hr.jobDescription')} value={e.labels.jobDescription} />
             <Row label={t('hr.grade')} value={e.grade} />
             <Row label={t('hr.employmentType')} value={t(`hr.employmentTypes.${e.employmentType}`)} />
             <Row label={t('admin.users.department')} value={e.labels.department} />
             <Row label={t('hr.unit')} value={e.labels.unit} />
             <Row label={t('hr.directManager')} value={e.labels.directManager} />
-            <Row
-              label={t('admin.org.branch')}
-              value={[e.labels.branch, e.labels.site].filter(Boolean).join(' — ')}
-            />
+            <Row label={t('admin.org.branch')} value={e.labels.branch} />
+            <Row label={t('hr.site')} value={e.labels.site} />
             <Row label={t('hr.hireDate')} value={formatDate(e.hireDate)} />
+            <Row label={t('hr.gosiJoinDate')} value={e.gosiJoinDate ? formatDate(e.gosiJoinDate) : undefined} />
             <Row label={t('hr.endDate')} value={e.endDate ? formatDate(e.endDate) : undefined} />
           </dl>
         </Card>

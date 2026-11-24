@@ -21,7 +21,6 @@ import { CalendarEvent } from './core/calendar/model';
 import { nextNumber } from './core/numbering/service';
 import { riyadhPeriod } from './core/kpi/service';
 import { registerModules } from './bootstrap';
-import { logger } from './logger';
 import {
   createQuote,
   respondQuote,
@@ -566,8 +565,8 @@ export async function seedSales(): Promise<{ customers: number; leads: number }>
       [],
     );
   }
-  // The every-state sample runs last and never blocks the rest of the seed: a failure is logged, not thrown.
-  try {
+  // The every-state sample runs last. A failure here fails the whole seed (HR prompt §0: the seed never swallows errors).
+  {
     // S5 [SAL §17 المرحلة الخامسة «بيانات لكل حالة»]: the states the earlier sample does not reach — a customer «غير مهتم»,
     // opportunities «قيد المعالجة» and «تم التواصل», quotes draft / sent / rejected / negotiating, an overdue invoice,
     // sorting and cleaning requests, discussions «بانتظار الرد» and «مغلقة», meetings in every calendar status (one that
@@ -802,8 +801,6 @@ export async function seedSales(): Promise<{ customers: number; leads: number }>
       metric: 'revenue',
       value: 380_000_00,
     });
-  } catch (err) {
-    logger.warn({ err }, 'seedSales: the S5 every-state sample was skipped');
   }
 
   return { customers: await Customer.countDocuments(), leads: await Lead.countDocuments() };

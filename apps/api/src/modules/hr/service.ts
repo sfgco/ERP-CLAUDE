@@ -609,6 +609,14 @@ export async function changeStatus(
       session,
     );
   });
+  // «إرسال إشعار للموظف عند اعتماد ترقيته أو تغيير وضعه الوظيفي» [HR §3.7] — the status half of that bullet.
+  await notifyJobChange(
+    employee,
+    'employee.promotion',
+    `تغيّرت حالتك الوظيفية من «${EMPLOYEE_STATUS_AR[from.status]}» إلى «${EMPLOYEE_STATUS_AR[input.status]}»${
+      input.reason ? ` — ${input.reason}` : ''
+    }`,
+  );
   return employee;
 }
 

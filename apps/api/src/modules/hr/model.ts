@@ -83,6 +83,8 @@ const employeeSchema = new Schema(
     allowances: { type: [{ type: { type: String }, amountHalalas: Number }], default: [] },
     bank: { bankName: String, ibanEnc: String, ibanLast4: String },
     medicalInsurance: { type: Boolean, default: false },
+    /** First registration with GOSI: picks the contribution-rate group in payroll (DECISIONS §21 Q8) [HR §3.6.3]. */
+    gosiJoinDate: { type: Date },
     legacyId: { type: String }, // import-friendly (DECISIONS §3)
     lastBirthdayYear: { type: Number },
     deletedAt: { type: Date },

@@ -188,7 +188,16 @@ export function AppShell() {
     { to: '/notifications', label: t('nav.notifications'), icon: Bell, show: true },
     { to: '/me/security', label: t('nav.security'), icon: ShieldCheck, show: true },
   ];
+  const seesAllEmployees =
+    can('hr.employees', 'view') && user?.permissions.find((p) => p.resource === 'hr.employees')?.scope === 'all';
   const hrItems = [
+    {
+      // «واجهة رئيسية لقسم الموارد البشرية» [HR §9.1]: HR officers and managers (who may approve requests or create files).
+      to: '/hr',
+      label: t('nav.hrHome'),
+      icon: Home,
+      show: seesAllEmployees && (can('hr.requests', 'approve') || can('hr.employees', 'create')),
+    },
     {
       to: '/hr/employees',
       label: t('nav.employees'),
@@ -207,6 +216,16 @@ export function AppShell() {
       show:
         can('hr.employees', 'view') &&
         user?.permissions.find((p) => p.resource === 'hr.employees')?.scope === 'all',
+    },
+    {
+      // «واجهة الهيكل التنظيمي» [HR §9.2]: anyone who may see employee files; the tree is limited to their scope.
+      to: '/hr/org-chart',
+      label: t('nav.orgChart'),
+      icon: Building2,
+      show:
+        can('hr.employees', 'view') &&
+        (can('hr.employees', 'create') ||
+          user?.roles.some((r) => r.role === 'department_manager' || r.role === 'executive')),
     },
     {
       to: '/hr/export',

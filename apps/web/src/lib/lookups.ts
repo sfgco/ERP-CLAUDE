@@ -11,6 +11,7 @@ export interface Lookup {
   code?: string;
   nameAr?: string;
   titleAr?: string;
+  descriptionAr?: string;
   parentId?: string | null;
   departmentId?: string;
   branchId?: string;

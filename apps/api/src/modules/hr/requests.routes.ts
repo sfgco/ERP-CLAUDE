@@ -10,6 +10,7 @@ import {
   type CreateHrRequestInput,
 } from '@eayni/shared';
 import { asyncHandler } from '../../core/http/async';
+import { riyadhDayRange } from '../../core/dates/businessDays';
 import { validate } from '../../core/http/validate';
 import { actorFrom, type AuthedRequest } from '../../core/http/context';
 import { forbidden, notFound } from '../../core/http/errors';
@@ -22,6 +23,9 @@ import { recordAudit } from '../../core/audit/service';
 import { Employee } from './model';
 import { HrRequest } from './requests.model';
 import * as svc from './requests.service';
+
+/** States in which a request waits for someone's decision [HR §3.5 «حالات الطلب»]. */
+export const PENDING_STATES = ['new', 'under_review', 'awaiting_manager', 'awaiting_hr', 'awaiting_final'];
 
 export const requestsRouter = Router();
 
@@ -85,6 +89,14 @@ requestsRouter.get(
     if (q.type) filter.type = q.type;
     if (q.state) filter.state = q.state;
     if (q.open) filter.closedAt = null;
+    if (q.pending) Object.assign(filter, { closedAt: null, state: { $in: PENDING_STATES } });
+    if (q.outcome)
+      filter.$and = [
+        ...((filter.$and as unknown[] | undefined) ?? []),
+        { $or: [{ state: q.outcome }, { state: 'closed', 'decision.outcome': q.outcome }] },
+      ];
+    const created = riyadhDayRange(q.from, q.to);
+    if (created) filter.createdAt = created;
     if (q.employeeId) filter.employeeId = q.employeeId;
     const [items, total] = await Promise.all([
       HrRequest.find(filter)

@@ -50,7 +50,7 @@ portalRouter.get(
     const [dept, unit, pos, branch, site, manager, contract, pendingChanges] = await Promise.all([
       Department.findById(e.departmentId).select('nameAr').lean(),
       e.unitId ? Unit.findById(e.unitId).select('nameAr').lean() : null,
-      e.positionId ? Position.findById(e.positionId).select('titleAr grade').lean() : null,
+      e.positionId ? Position.findById(e.positionId).select('titleAr grade descriptionAr').lean() : null,
       e.branchId ? Branch.findById(e.branchId).select('nameAr city').lean() : null,
       e.siteId ? Site.findById(e.siteId).select('nameAr').lean() : null,
       e.directManagerId
@@ -71,6 +71,7 @@ portalRouter.get(
         department: dept?.nameAr,
         unit: unit?.nameAr,
         position: pos?.titleAr,
+        jobDescription: pos?.descriptionAr,
         branch: branch?.nameAr,
         site: site?.nameAr,
         directManager: manager?.fullNameAr,

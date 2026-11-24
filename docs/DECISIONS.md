@@ -371,5 +371,19 @@ Review of commit 82b0f54 before any deploy; fixed in four commits, one per group
 | Q11 | the warnings ladder — must match the approved لائحة تنظيم العمل | `hr.discipline.ladder` |
 Every setting carries a `provisional: true` flag that the admin clears on confirmation; the flag drives the label.
 
+### H1 implementation notes (built 2026-11-24, branch `hr-h1`) — confirm or correct
+- **Audit:** `docs/HR_COVERAGE.md` filled from the code for §3.1, §3.3, §3.5, §3.9, §4, §5, §6 (and the rest marked by slice); fourteen extra gaps found and closed except two noted items (org CRUD tests → H4; direct-manager contract view — not a spec defect). Demo: `docs/HR.md` H1.
+- **Request cards [HR §5 رابعاً]:** «الجديدة / المعتمدة / المرفوضة» are counted in a period (Riyadh days, default the current month, switch for last month / 90 days); «المعلقة» = open and awaiting a decision now; «التي تحتاج إلى استكمال» = currently returned. Each card drills down to `/hr/requests` with the same filters (`from`, `to`, `outcome`, `pending`, `state`).
+- **Archive [HR §3.5 المرحلة الرابعة «أرشفة الطلب إلكترونياً»] — new default to confirm:** a decided request (معتمد / مرفوض) moves to «مغلق» by the daily job `hr.requests.autoclose` after **`hr.requestAutoCloseBusinessDays` = 5** business days (same cadence as the tickets' auto-close, §8), through the workflow's `close` transition so the stage log, the action log (`close` by `system`) and the audit record it; HR may still close by hand. The decision outcome stays readable after archiving.
+- **«نوع الدوام» = `employmentType`** (HR_PLAN §2, Q1 note): one field, labelled «نوع الدوام» as in the spec; H2 adds the work schedule («جدول الدوام»).
+- **«المستندات التي تحتاج إلى تحديث» [HR §5 ثالثاً]** = documents and identities already past their expiry (latest version); card + drill-down.
+- **Status-change notification [HR §3.7]:** every status change notifies the employee and the direct manager with the old and new status and the reason (type `employee.promotion`, title «تم اعتماد تغيير وظيفي» — the EP §15.16 type that covers «تغيير وضعه الوظيفي»).
+- **`gosiJoinDate`** on the file (HR-edited, visible to the employee and Finance, exported as «تاريخ الانضمام للتأمينات الاجتماعية»); not a sensitive field.
+- **Export [HR §4]:** employee picker («تحديد الموظفين المستهدفين») on `employees`, `hr.documents_expiring` and `hr.requests`; the two new resources need `hr.employees:export` / `hr.requests:export` (HR roles only). The expiring list and the export read one helper so the screen and the Excel agree.
+- **Org chart [HR §9.2]:** `GET /hr/org-chart` returns departments, units and the employees inside the viewer's scope (own / team / department / all) with public fields only; the tree is built in the browser; a manager outside the scope is shown as a note.
+- **`/hr` landing [HR §9.1]** for HR officers and managers (whoever sees all employees and may approve requests or create files); later queues are added by H2–H3, never shown as zeros (§18 rule).
+- **Drafts [HR §7.5]:** one draft per user for «رفع طلب» on the core drafts store (`formKey: hr_request`), offered on the next opening, deleted on submission or on «تجاهل».
+- **Seed:** the Sales S5 try/catch is gone; `apps/api/src/seed.test.ts` runs the full seed on the empty test database and a second idempotent run. Test counts: API 234 (225 + 9), web 38 (28 + 10).
+
 ## Still open (ask before building)
 Everything in the "Open decisions" section of `CLAUDE.md` that is not settled above, notably: accounting depth / general ledger, ZATCA route and wave, financial authority matrix and monthly cut-off, customer app and company portal, offline support for field staff, discount limits, points and rewards policy, certificate weight criterion, impact factors, organization-type list (SAL §4.1 vs CS §6.8), Finance-stage state labels in other modules (FIN §5 vs PRC §4 and MKT §8).

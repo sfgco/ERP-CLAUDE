@@ -15,8 +15,14 @@ import { EmployeeReport } from './reports.model';
 import { visibilityFilter as reportsVisibility } from './reports.service';
 import { registerExportResource } from '../../core/export/service';
 import { Employee } from './model';
+import { EXPIRING_KINDS, EXPIRING_KIND_AR, expiringRows, type ExpiringKind } from './expiring';
 import { employeeScopeFilter, hrUserIds, teamUserIdsOf } from './service';
-import { registerRequestHandlers, runRequestOverdueReminders, visibilityFilter } from './requests.service';
+import {
+  registerRequestHandlers,
+  runRequestAutoClose,
+  runRequestOverdueReminders,
+  visibilityFilter,
+} from './requests.service';
 import { registerAssigneeDirectory, registerTaskSourceResolver } from '../../core/tasks/service';
 import { registerPeopleSearch } from '../../core/records/resolvers';
 import { registerCalendarSource } from '../../core/calendar/sources';
@@ -72,6 +78,7 @@ export function registerHrModule(): void {
     return r ? { id: String(r._id), label: r.number } : null;
   });
   registerJob('hr.requests.overdue', (now) => runRequestOverdueReminders(now));
+  registerJob('hr.requests.autoclose', (now) => runRequestAutoClose(now));
 
   // Employee documents: expiry recipients and who may read them [HR §3.9, EP §5.2].
   registerExpiryRecipients('employee', async (ownerId) => {
@@ -239,9 +246,11 @@ export function registerHrModule(): void {
       { key: 'nationality', labelAr: 'الجنسية' },
       { key: 'gender', labelAr: 'الجنس' },
       { key: 'employmentType', labelAr: 'نوع الدوام' },
-      { key: 'medicalInsurance', labelAr: 'تأمين طبي', format: (v) => (v ? 'نعم' : 'لا') },
+      { key: 'medicalInsurance', labelAr: 'وجود تأمين طبي', format: (v) => (v ? 'نعم' : 'لا') },
       { key: 'status', labelAr: 'حالة الموظف' },
       { key: 'hireDate', labelAr: 'تاريخ المباشرة', kind: 'date' },
+      { key: 'gosiJoinDate', labelAr: 'تاريخ الانضمام للتأمينات الاجتماعية', kind: 'date' },
+      { key: 'siteName', labelAr: 'موقع العمل' },
       { key: 'workEmail', labelAr: 'البريد الوظيفي' },
       { key: 'mobile', labelAr: 'الجوال' },
       { key: 'departmentName', labelAr: 'القسم' },
@@ -272,14 +281,18 @@ export function registerHrModule(): void {
       if (typeof filters.status === 'string') f.status = filters.status;
       if (typeof filters.branchId === 'string') f.branchId = filters.branchId;
       if (typeof filters.nationality === 'string' && filters.nationality) f.nationality = filters.nationality;
+      // «تحديد الموظفين المستهدفين» [HR §4 step 2]: an explicit list, intersected with the viewer's scope.
+      const chosen = employeeIdsFilter(filters);
+      if (chosen) f.$and = [...((f.$and as unknown[] | undefined) ?? []), chosen];
       const rows = await Employee.find(f).limit(limit).lean();
-      const { Department, Position, Branch } = await import('../../core/org/model');
+      const { Department, Position, Branch, Site } = await import('../../core/org/model');
       const { Contract } = await import('./model');
       const { decrypt } = await import('../../core/auth/crypto');
-      const [depts, positions, branches, managers, contracts] = await Promise.all([
+      const [depts, positions, branches, sites, managers, contracts] = await Promise.all([
         Department.find().select('nameAr').lean(),
         Position.find().select('titleAr').lean(),
         Branch.find().select('nameAr').lean(),
+        Site.find().select('nameAr').lean(),
         Employee.find({ _id: { $in: rows.map((r) => r.directManagerId).filter(Boolean) } })
           .select('fullNameAr')
           .lean(),
@@ -295,6 +308,7 @@ export function registerHrModule(): void {
       const dn = name(depts, (x) => x.nameAr);
       const pn = name(positions, (x) => x.titleAr);
       const bn = name(branches, (x) => x.nameAr);
+      const sn = name(sites, (x) => x.nameAr);
       const mn = name(managers, (x) => x.fullNameAr);
       const ct = new Map(contracts.map((c) => [String(c.employeeId), c]));
       return rows.map((r) => ({
@@ -302,6 +316,7 @@ export function registerHrModule(): void {
         departmentName: dn.get(String(r.departmentId)) ?? '',
         positionName: r.positionId ? (pn.get(String(r.positionId)) ?? '') : '',
         branchName: r.branchId ? (bn.get(String(r.branchId)) ?? '') : '',
+        siteName: r.siteId ? (sn.get(String(r.siteId)) ?? '') : '',
         directManagerName: r.directManagerId ? (mn.get(String(r.directManagerId)) ?? '') : '',
         contractType: ct.get(String(r._id))?.type ?? '',
         contractEndDate: ct.get(String(r._id))?.endDate ?? '',
@@ -311,4 +326,125 @@ export function registerHrModule(): void {
       })) as unknown as Record<string, unknown>[];
     },
   });
+
+  // «استخراج تقارير بالوثائق التي قاربت على الانتهاء» [HR §3.9]: the same rows as the dashboard drill-down, as Excel.
+  registerExportResource({
+    resource: 'hr.documents_expiring',
+    labelAr: 'الوثائق والعقود القريبة من الانتهاء',
+    permissionResource: 'hr.employees',
+    fields: [
+      { key: 'kindAr', labelAr: 'النوع' },
+      { key: 'titleAr', labelAr: 'الوثيقة' },
+      { key: 'employeeNumber', labelAr: 'الرقم الوظيفي' },
+      { key: 'fullNameAr', labelAr: 'الاسم' },
+      { key: 'departmentName', labelAr: 'القسم' },
+      { key: 'expiryDate', labelAr: 'تاريخ الانتهاء', kind: 'date' },
+      { key: 'daysLeft', labelAr: 'الأيام المتبقية' },
+    ],
+    query: async ({ filters, authz, userId, limit }) => {
+      const { User } = await import('../../core/auth/model');
+      const user = await User.findById(userId);
+      const scope: Record<string, unknown> = user ? await employeeScopeFilter(authz, user) : { _id: null };
+      if (typeof filters.departmentId === 'string') scope.departmentId = filters.departmentId;
+      if (typeof filters.branchId === 'string') scope.branchId = filters.branchId;
+      const chosen = employeeIdsFilter(filters);
+      if (chosen) scope.$and = [...((scope.$and as unknown[] | undefined) ?? []), chosen];
+      const within = Math.min(Math.max(Number(filters.within ?? 90) || 90, 1), 365);
+      const kinds =
+        typeof filters.kind === 'string' && (EXPIRING_KINDS as string[]).includes(filters.kind)
+          ? [filters.kind as ExpiringKind]
+          : EXPIRING_KINDS;
+      const { Department } = await import('../../core/org/model');
+      const depts = await Department.find().select('nameAr').lean();
+      const dn = new Map(depts.map((x) => [String(x._id), x.nameAr]));
+      const rows = await expiringRows(kinds, within, scope);
+      return rows.slice(0, limit).map((r) => ({
+        ...r,
+        kindAr: EXPIRING_KIND_AR[r.kind],
+        departmentName: r.departmentId ? (dn.get(String(r.departmentId)) ?? '') : '',
+      })) as unknown as Record<string, unknown>[];
+    },
+  });
+
+  // «ويجب أن تشمل التقارير … والطلبات» [HR §4]: employee requests with their route, state and decision.
+  registerExportResource({
+    resource: 'hr.requests',
+    labelAr: 'طلبات الموظفين',
+    permissionResource: 'hr.requests',
+    fields: [
+      { key: 'number', labelAr: 'رقم الطلب' },
+      { key: 'typeAr', labelAr: 'نوع الطلب' },
+      { key: 'employeeNumber', labelAr: 'الرقم الوظيفي' },
+      { key: 'employeeName', labelAr: 'اسم مقدم الطلب' },
+      { key: 'departmentName', labelAr: 'القسم' },
+      { key: 'createdAt', labelAr: 'تاريخ تقديم الطلب', kind: 'datetime' },
+      { key: 'stateAr', labelAr: 'حالة الطلب' },
+      { key: 'pendingWithAr', labelAr: 'المسؤول عن الموافقة' },
+      { key: 'decisionOutcomeAr', labelAr: 'النتيجة' },
+      { key: 'decisionAt', labelAr: 'تاريخ القرار', kind: 'datetime' },
+      { key: 'decisionReason', labelAr: 'سبب القرار' },
+      { key: 'closedAt', labelAr: 'تاريخ الإغلاق', kind: 'datetime' },
+      { key: 'notes', labelAr: 'الملاحظات' },
+    ],
+    query: async ({ filters, authz, userId, limit }) => {
+      const { User } = await import('../../core/auth/model');
+      const user = await User.findById(userId);
+      if (!user) return [];
+      const f: Record<string, unknown> = { deletedAt: null, ...(await visibilityFilter(user, authz)) };
+      if (typeof filters.type === 'string' && filters.type) f.type = filters.type;
+      if (typeof filters.state === 'string' && filters.state) f.state = filters.state;
+      if (typeof filters.departmentId === 'string' && filters.departmentId) f.departmentId = filters.departmentId;
+      const { riyadhDayRange } = await import('../../core/dates/businessDays');
+      const created = riyadhDayRange(
+        typeof filters.from === 'string' ? filters.from : undefined,
+        typeof filters.to === 'string' ? filters.to : undefined,
+      );
+      if (created) f.createdAt = created;
+      const chosen = employeeIdsFilter(filters);
+      if (chosen) f.employeeId = (chosen._id as { $in: string[] });
+      const rows = await HrRequest.find(f).sort({ createdAt: -1 }).limit(limit).lean();
+      const { Department } = await import('../../core/org/model');
+      const [employees, depts] = await Promise.all([
+        Employee.find({ _id: { $in: rows.map((r) => r.employeeId) } })
+          .select('fullNameAr employeeNumber')
+          .lean(),
+        Department.find().select('nameAr').lean(),
+      ]);
+      const en = new Map(employees.map((e) => [String(e._id), e]));
+      const dn = new Map(depts.map((x) => [String(x._id), x.nameAr]));
+      const { HR_REQUEST_TYPE_AR, HR_REQUEST_STATE_AR } = await import('@eayni/shared');
+      const PENDING_AR: Record<string, string> = {
+        manager: 'المدير المباشر',
+        hr: 'الموارد البشرية',
+        finance: 'المالية',
+        requester: 'مقدم الطلب',
+      };
+      return rows.map((r) => ({
+        number: r.number,
+        typeAr: HR_REQUEST_TYPE_AR[r.type as keyof typeof HR_REQUEST_TYPE_AR] ?? r.type,
+        employeeNumber: en.get(String(r.employeeId))?.employeeNumber ?? '',
+        employeeName: en.get(String(r.employeeId))?.fullNameAr ?? '',
+        departmentName: r.departmentId ? (dn.get(String(r.departmentId)) ?? '') : '',
+        createdAt: r.createdAt,
+        stateAr: HR_REQUEST_STATE_AR[r.state] ?? r.state,
+        pendingWithAr: r.pendingWith ? (PENDING_AR[r.pendingWith] ?? r.pendingWith) : '',
+        decisionOutcomeAr: r.decision?.outcome ? (HR_REQUEST_STATE_AR[r.decision.outcome] ?? r.decision.outcome) : '',
+        decisionAt: r.decision?.at ?? '',
+        decisionReason: r.decision?.reason ?? '',
+        closedAt: r.closedAt ?? '',
+        notes: r.notes ?? '',
+      })) as unknown as Record<string, unknown>[];
+    },
+  });
+}
+
+/** `filters.employeeIds`: an array (or comma list) of employee ids chosen in the export builder [HR §4 step 2]. */
+function employeeIdsFilter(filters: Record<string, unknown>): Record<string, unknown> | undefined {
+  const raw = Array.isArray(filters.employeeIds)
+    ? filters.employeeIds
+    : typeof filters.employeeIds === 'string' && filters.employeeIds
+      ? filters.employeeIds.split(',')
+      : [];
+  const ids = raw.map(String).filter((x) => /^[0-9a-f]{24}$/i.test(x));
+  return ids.length ? { _id: { $in: ids } } : undefined;
 }

@@ -78,6 +78,10 @@ export function EmployeesPage() {
   const [dept, setDept] = useState(search.get('departmentId') ?? '');
   const [status, setStatus] = useState(search.get('status') ?? '');
   const probation = search.get('probation'); // review H5: HR dashboard drill-down
+  // HR §5 أولاً drill-downs: «بحسب الفرع / الجنسية / نوع التوظيف» arrive as URL filters.
+  const branchId = search.get('branchId') ?? '';
+  const nationality = search.get('nationality') ?? '';
+  const employmentType = search.get('employmentType') ?? '';
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string>();
   const [temp, setTemp] = useState<{ email: string; password: string }>();
@@ -87,9 +91,12 @@ export function EmployeesPage() {
     ...(dept ? { departmentId: dept } : {}),
     ...(status ? { status } : {}),
     ...(probation ? { probationWithinDays: probation } : {}),
+    ...(branchId ? { branchId } : {}),
+    ...(nationality ? { nationality } : {}),
+    ...(employmentType ? { employmentType } : {}),
   });
   const list = useQuery({
-    queryKey: ['employees', q, dept, status, probation],
+    queryKey: ['employees', q, dept, status, probation, branchId, nationality, employmentType],
     queryFn: () => get<Paged<EmployeeRow>>(`/hr/employees?${params}`),
   });
   const form = useForm<NewEmployee>({

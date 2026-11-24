@@ -49,6 +49,8 @@ export interface EmployeeFull extends EmployeeRow {
   allowances?: { type: string; amountHalalas: number }[];
   bank?: { bankName?: string; iban?: string; ibanMasked?: string };
   medicalInsurance?: boolean;
+  /** First GOSI registration — payroll rate group (DECISIONS §21 Q8). */
+  gosiJoinDate?: string;
   statusAr: string;
 }
 

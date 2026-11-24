@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { RoleAssignment } from '@eayni/shared';
 import { OPEN_TASK_STATUSES } from '@eayni/shared';
 import { asyncHandler } from '../../core/http/async';
-import { startOfRiyadhWeek } from '../../core/dates/businessDays';
+import { riyadhDate, riyadhDayRange, startOfRiyadhWeek } from '../../core/dates/businessDays';
 import type { AuthedRequest } from '../../core/http/context';
 import { badRequest, forbidden } from '../../core/http/errors';
 import { requireAuth } from '../../core/auth/middleware';
@@ -16,6 +16,8 @@ import { Ticket } from '../tickets/model';
 import { teamTicketsFilter } from '../tickets/service';
 import { Contract, Employee, EmployeeEvent } from './model';
 import { HrRequest } from './requests.model';
+import { PENDING_STATES } from './requests.routes';
+import { EXPIRING_KINDS, expiringRows, type ExpiringKind } from './expiring';
 import { EmployeeReport } from './reports.model';
 
 export const dashboardRouter = Router();
@@ -107,10 +109,18 @@ dashboardRouter.get(
     if (req.authz!.scope !== 'all') throw forbidden('لوحة الموارد البشرية لمن يرى كل الموظفين');
     const now = new Date();
     const d = (days: number) => new Date(now.getTime() + days * DAY);
+    // Period of the request cards [HR §5 رابعاً]: Riyadh days, default the current month.
+    const dayRe = /^\d{4}-\d{2}-\d{2}$/;
+    const today = riyadhDate(now);
+    const period = {
+      from: typeof req.query.from === 'string' && dayRe.test(req.query.from) ? req.query.from : `${today.slice(0, 7)}-01`,
+      to: typeof req.query.to === 'string' && dayRe.test(req.query.to) ? req.query.to : today,
+    };
+    const createdIn = riyadhDayRange(period.from, period.to)!;
     const employees = await Employee.find({ deletedAt: null, status: { $nin: ['resigned', 'terminated'] } })
-      .select('departmentId branchId nationality status secondment identity.expiryDate')
+      .select('departmentId branchId nationality employmentType status secondment identity.expiryDate')
       .lean();
-    const [depts, branches, contracts, documents, requests, probation, events] = await Promise.all([
+    const [depts, branches, contracts, documents, requests, probation, events, created, decided, pending, needsCompletion] = await Promise.all([
       Department.find().select('nameAr').lean(),
       Branch.find().select('nameAr').lean(),
       Contract.find({ status: { $in: ['active', 'renewing'] } })
@@ -137,6 +147,10 @@ dashboardRouter.get(
         .sort({ at: -1 })
         .limit(20)
         .lean(),
+      HrRequest.countDocuments({ deletedAt: null, createdAt: createdIn }),
+      HrRequest.find({ deletedAt: null, 'decision.at': createdIn }).select('decision.outcome').lean(),
+      HrRequest.countDocuments({ deletedAt: null, closedAt: null, state: { $in: PENDING_STATES } }),
+      HrRequest.countDocuments({ deletedAt: null, state: 'needs_completion' }),
     ]);
     const count = <T>(items: T[], key: (x: T) => string | undefined) => {
       const m = new Map<string, number>();
@@ -167,12 +181,28 @@ dashboardRouter.get(
         byBranch: count(employees, (e) => (e.branchId ? branchName.get(String(e.branchId)) : undefined)),
         byNationality: count(employees, (e) => e.nationality),
         byContractType: count(liveContracts, (c) => c.type),
+        // «توزيع الموظفين حسب الجنسية ونوع التوظيف» [HR §5 أولاً]
+        byEmploymentType: count(employees, (e) => e.employmentType),
         byStatus: count(employees, (e) => e.status),
       },
       expiring: {
         contracts: buckets(liveContracts.map((c) => c.endDate)),
         identities: buckets(employees.map((e) => e.identity?.expiryDate)),
         documents: buckets(documents.map((x) => x.expiryDate)),
+        // «المستندات التي تحتاج إلى تحديث» [HR §5 ثالثاً]: already past their expiry (documents and identities).
+        needsUpdate:
+          documents.filter((x) => x.expiryDate && x.expiryDate < now).length +
+          employees.filter((e) => e.identity?.expiryDate && e.identity.expiryDate < now).length,
+      },
+      // «الطلبات الجديدة، المعلقة، المعتمدة، المرفوضة، التي تحتاج إلى استكمال» [HR §5 رابعاً]: new / approved / rejected
+      // are counted in the period, pending and needs-completion are the live backlog whatever the submission date.
+      requestsByState: {
+        period,
+        new: created,
+        pending,
+        approved: decided.filter((r) => r.decision?.outcome === 'approved').length,
+        rejected: decided.filter((r) => r.decision?.outcome === 'rejected').length,
+        needsCompletion,
       },
       requests: {
         open: requests.length,
@@ -205,67 +235,10 @@ dashboardRouter.get(
   authorize('hr.employees', 'view'),
   asyncHandler(async (req: AuthedRequest, res) => {
     if (req.authz!.scope !== 'all') throw forbidden('لوحة الموارد البشرية لمن يرى كل الموظفين');
-    const kind = String(req.query.kind ?? 'contracts');
+    const kind = String(req.query.kind ?? 'contracts') as ExpiringKind;
+    if (!EXPIRING_KINDS.includes(kind)) throw badRequest('نوع غير معروف');
     const within = Math.min(Math.max(Number(req.query.within ?? 90) || 90, 1), 365);
-    const now = new Date();
-    const until = new Date(now.getTime() + within * DAY);
-    const live = { deletedAt: null, status: { $nin: ['resigned', 'terminated'] } };
-    const employees = await Employee.find(live)
-      .select('fullNameAr employeeNumber departmentId identity.expiryDate identity.type')
-      .lean();
-    const byId = new Map(employees.map((e) => [String(e._id), e]));
-    type Row = {
-      employeeId: string;
-      fullNameAr: string;
-      employeeNumber: string;
-      departmentId?: unknown;
-      titleAr: string;
-      expiryDate: Date;
-      daysLeft: number;
-    };
-    const row = (employeeId: string, titleAr: string, expiryDate: Date): Row | undefined => {
-      const e = byId.get(employeeId);
-      if (!e) return undefined;
-      return {
-        employeeId,
-        fullNameAr: e.fullNameAr,
-        employeeNumber: e.employeeNumber,
-        departmentId: e.departmentId,
-        titleAr,
-        expiryDate,
-        daysLeft: Math.ceil((expiryDate.getTime() - now.getTime()) / DAY),
-      };
-    };
-    let items: (Row | undefined)[] = [];
-    if (kind === 'contracts') {
-      const contracts = await Contract.find({
-        status: { $in: ['active', 'renewing'] },
-        endDate: { $ne: null, $lte: until },
-      })
-        .select('employeeId type endDate number')
-        .lean();
-      items = contracts.map((c) => row(String(c.employeeId), c.number, c.endDate!));
-    } else if (kind === 'identities') {
-      items = employees
-        .filter((e) => e.identity?.expiryDate && e.identity.expiryDate <= until)
-        .map((e) => row(String(e._id), e.identity!.type ?? 'identity', e.identity!.expiryDate!));
-    } else if (kind === 'documents') {
-      const docs = await DocumentRecord.find({
-        deletedAt: null,
-        ownerType: 'employee',
-        expiryDate: { $ne: null, $lte: until },
-      })
-        .select('ownerId type version titleAr expiryDate')
-        .sort({ version: -1 })
-        .lean();
-      const latest = docs.filter(
-        (r, i, arr) => arr.findIndex((x) => x.ownerId === r.ownerId && x.type === r.type) === i,
-      );
-      items = latest.map((d) => row(d.ownerId, d.titleAr, d.expiryDate!));
-    } else throw badRequest('نوع غير معروف');
-    const rows = items
-      .filter((x): x is Row => !!x)
-      .sort((a, b) => a.expiryDate.getTime() - b.expiryDate.getTime());
+    const rows = await expiringRows([kind], within, {});
     res.json({ kind, within, items: rows, total: rows.length });
   }),
 );

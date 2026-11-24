@@ -27,6 +27,8 @@ import { EmployeePage } from './pages/hr/EmployeePage';
 import { ProfilePage } from './pages/me/ProfilePage';
 import { ProfileChangesPage } from './pages/hr/ProfileChangesPage';
 import { SecondmentsPage } from './pages/hr/SecondmentsPage';
+import { OrgChartPage } from './pages/hr/OrgChartPage';
+import { HrHomePage } from './pages/hr/HrHomePage';
 import { RequestsListPage } from './pages/requests/RequestsListPage';
 import { RequestDetailPage } from './pages/requests/RequestDetailPage';
 import { TeamPage } from './pages/manager/TeamPage';
@@ -148,6 +150,8 @@ export const router = createBrowserRouter([
               {
                 element: <RequirePermission resource="hr.employees" action="view" />,
                 children: [
+                  { path: '/hr', element: <HrHomePage /> },
+                  { path: '/hr/org-chart', element: <OrgChartPage /> },
                   { path: '/hr/dashboard', element: <HrDashboardPage /> },
                   { path: '/hr/export', element: <ExportPage /> },
                   { path: '/hr/expiring', element: <ExpiringPage /> },

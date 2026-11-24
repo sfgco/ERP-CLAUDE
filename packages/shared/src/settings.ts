@@ -352,6 +352,13 @@ export const SETTING_DEFINITIONS = {
     schema: z.number().int().positive().nullable(),
     default: null, // DECISIONS §5: not decided
   }),
+  'hr.requestAutoCloseBusinessDays': def({
+    key: 'hr.requestAutoCloseBusinessDays',
+    labelAr: 'إغلاق وأرشفة الطلب المعتمد أو المرفوض تلقائياً بعد (أيام عمل)',
+    group: 'hr',
+    schema: z.number().int().min(0).max(60),
+    default: 5, // H1: same cadence as the tickets' auto-close (DECISIONS §8); HR may close earlier by hand
+  }),
   'hr.probationAlertDaysBefore': def({
     key: 'hr.probationAlertDaysBefore',
     labelAr: 'تنبيه انتهاء فترة التجربة قبل (أيام)',

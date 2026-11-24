@@ -24,6 +24,7 @@ import { requireAuth } from '../../core/auth/middleware';
 import { authorize } from '../../core/rbac/authorize';
 import { recordAudit } from '../../core/audit/service';
 import { nextNumber } from '../../core/numbering/service';
+import { Department, Position, Unit } from '../../core/org/model';
 import { Contract, Custody, Employee } from './model';
 import * as hr from './service';
 
@@ -61,6 +62,48 @@ async function serializeFor(req: AuthedRequest, e: InstanceType<typeof Employee>
   return out;
 }
 
+// ---------- org chart [HR §3.1, §9 «واجهة الهيكل التنظيمي»] ----------
+/**
+ * Departments → units → employees with their direct-manager chain. Employees are limited to the viewer's scope
+ * (own / team / department / all) and carry public fields only; the tree is built in the browser.
+ */
+hrRouter.get(
+  '/org-chart',
+  requireAuth(),
+  authorize('hr.employees', 'view'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const scope = await hr.employeeScopeFilter(req.authz!, req.auth.user);
+    const [departments, units, positions, employees] = await Promise.all([
+      Department.find({ deletedAt: null, active: true }).select('code nameAr').sort({ nameAr: 1 }).lean(),
+      Unit.find({ deletedAt: null, active: true }).select('nameAr departmentId').sort({ nameAr: 1 }).lean(),
+      Position.find({ deletedAt: null }).select('titleAr').lean(),
+      Employee.find({ deletedAt: null, status: { $nin: ['resigned', 'terminated'] }, ...scope })
+        .select('fullNameAr employeeNumber departmentId unitId positionId directManagerId status userId')
+        .sort({ fullNameAr: 1 })
+        .lean(),
+    ]);
+    const title = new Map(positions.map((p) => [String(p._id), p.titleAr]));
+    res.json({
+      departments,
+      units,
+      employees: employees.map((e) => ({
+        _id: e._id,
+        fullNameAr: e.fullNameAr,
+        employeeNumber: e.employeeNumber,
+        departmentId: e.departmentId,
+        unitId: e.unitId,
+        positionTitle: e.positionId ? (title.get(String(e.positionId)) ?? '') : '',
+        directManagerId: e.directManagerId,
+        status: e.status,
+        userId: e.userId,
+        /** Number of direct reports inside the viewer's scope. */
+        reports: employees.filter((x) => String(x.directManagerId) === String(e._id)).length,
+      })),
+      scope: req.authz!.scope,
+    });
+  }),
+);
+
 // ---------- employees ----------
 hrRouter.get(
   '/employees',
@@ -77,6 +120,8 @@ hrRouter.get(
     if (q.branchId) filter.branchId = q.branchId;
     if (q.status) filter.status = q.status;
     if (q.managerId) filter.directManagerId = q.managerId;
+    if (q.nationality) filter.nationality = q.nationality;
+    if (q.employmentType) filter.employmentType = q.employmentType;
     if (q.probationWithinDays) {
       const now = new Date();
       const ids = await Contract.find({
