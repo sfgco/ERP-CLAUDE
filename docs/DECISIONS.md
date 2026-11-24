@@ -385,7 +385,13 @@ Every setting carries a `provisional: true` flag that the admin clears on confir
 - **Drafts [HR §7.5]:** one draft per user for «رفع طلب» on the core drafts store (`formKey: hr_request`), offered on the next opening, deleted on submission or on «تجاهل».
 - **Seed:** the Sales S5 try/catch is gone; `apps/api/src/seed.test.ts` runs the full seed on the empty test database and a second idempotent run. Test counts: API 234 (225 + 9), web 38 (28 + 10).
 
-### H1 approval and H2 implementation notes (2026-11-24, branch `hr-h2`) — confirm or correct
+### H1 approval and H2 implementation notes (2026-11-24, branch `hr-h2`) — approved 2026-11-24
+**Owner approval (2026-11-24):** H2 approved including the four decisions below, which are now settled:
+1. A leave request with no balance loaded yet is flagged «الرصيد غير محمّل», not refused, until the opening balances are imported.
+2. A missed check-out leaves the day's hours uncounted until a correction is approved; **such a day must never count as an absence in payroll** (H3a: payslip deductions read `status === 'absent'` only, never `missing_out`).
+3. A direct manager without the department-manager role sees the team's attendance but cannot export it.
+4. The joining month accrues the full monthly annual-leave amount (no proration).
+Also requested for H3a: **the lateness rule becomes a provisional setting** — count the full lateness from the shift start (H2 behaviour: 20 min late with 15 min grace counts 20) or only the minutes beyond the grace (5) — before payroll uses lateness.
 - **H1 approved** on 2026-11-24 and merged into `main` by fast-forward; the auto-archive default **`hr.requestAutoCloseBusinessDays` = 5** is confirmed.
 - **Provisional settings are a flag the admin clears:** `SettingDefinition.provisional` marks the proposals of the plan; the stored setting gains `confirmedAt / confirmedBy` through `POST /settings/:key/confirm` («تأكيد الاعتماد» on the settings screen). Until then the screens show «مؤقت حتى اعتماد الموارد البشرية» (`GET /hr/attendance/policy` → `provisional.shift / geofence / leave`). Provisional now: `hr.attendance.defaultShiftCode` (Q1 hours), `hr.attendance.geofenceDefaultRadiusM` (Q2), `hr.leave.policies` (Q7, with per-type `provisional` on اضطرارية and أخرى).
 - **Schedules [HR §3.4 أولاً]:** `shifts` {periods, ramadanPeriods (Hijri month 9, Umm al-Qura), workDays, graceMinutes} versioned in `shiftVersions`; `shiftAssignments` with `siteIds[]` and a `fromDay / toDay` history. An employee without an assignment works the default shift `standard` (08:00–16:00 Sun–Thu, Ramadan 10:00–16:00) from the site on the file. Seed: `standard`, `field` (07:00–15:00, grace 15, two sample sites) and an `evening` sample rotation with nobody on it.
