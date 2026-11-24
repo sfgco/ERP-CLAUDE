@@ -330,15 +330,15 @@ Each one sits behind an adapter interface. Manual entry must work first; the int
 | Qiwa and GOSI | HR §3.2, §7.12 |
 | Maps and geocoding | OPS §7, HR §3.4 |
 
-## Build order (confirmed 2026-11-04; Sales moved ahead of attendance 2026-11-12 — see DECISIONS §7)
+## Build order (confirmed 2026-11-04; Sales moved ahead of attendance 2026-11-12; HR completed right after Sales 2026-11-24 — see DECISIONS §7)
 - [x] Phase 0 (done 2026-11-04): platform core, local dev setup, CI; deploy pipeline written but not run (DECISIONS §1)
 - [x] Phase 1 (done 2026-11-08, go-live review fixed — DECISIONS §19): HR foundation (org chart, employees, users, roles, contracts and documents, salary data entry) + Employee Portal (login, dashboard, profile, HR requests, tickets, tasks, calendar, reports, news, notifications)
-- [ ] **Phase S: Sales [SAL], complete, in the five SAL §17 phases (S1–S5)** — S1–S3 merged; S4 on branch `sales-s4` (2026-11-13) and S5 on `sales-s5` (2026-11-14), awaiting review — plan and questions in `docs/SALES_PLAN.md`, coverage in `docs/SALES_COVERAGE.md`, prompt in `docs/prompts/sales.md`. Includes the shared pieces Sales needs (CRM core, minimal party master FIN §8, tags, KPI framework, department discussions, email adapter) and thin hand-off stages for Procurement, Finance and Operations on the same Sales record; the full PRC/FIN/OPS/CS/MKT modules are not built here
-- [ ] Phase 2: HR attendance (shifts, GPS check-in/out with geofence, corrections, lateness/overtime per settings, reports) — HR §8 "التشغيل اليومي"
+- [x] **Phase S: Sales [SAL], complete, in the five SAL §17 phases (S1–S5)** — merged into `main` 2026-11-24 — plan and questions in `docs/SALES_PLAN.md`, coverage in `docs/SALES_COVERAGE.md`, demo in `docs/SALES.md`, prompt in `docs/prompts/sales.md`. Includes the shared pieces Sales needs (CRM core, minimal party master FIN §8, tags, KPI framework, department discussions, email adapter) and thin hand-off stages for Procurement, Finance and Operations on the same Sales record; the full PRC/FIN/OPS/CS/MKT modules are not built here
+- [ ] **Phase H: the rest of HR [HR], complete, in the four HR §8 phases (H1–H4)** — H1 audit of phase 1 and gaps; H2 attendance (shifts, GPS check-in/out with geofence, violations and alerts, corrections, leave balances, reports); H3 payroll runs, performance, training, recruitment, end of service; H4 full HR dashboard, export scope, API document, integration tests, government-integrations study — plan and questions in `docs/HR_PLAN.md`, coverage in `docs/HR_COVERAGE.md`, demo in `docs/HR.md`, prompt in `docs/prompts/hr.md`. Thin Finance (payroll) and IT (offboarding) stages on the HR record; replaces the former "Phase 2" and the HR part of "Phase 6"
 - [ ] Phase 3: Customer Service (conversations entered manually, transfers, leads inbox) on the CRM core from phase S
 - [ ] Phase 4: Finance phase 1 (department financial requests, review and approval, expenses and payments, archive, basic reports) + Procurement + Operations (intake, containers, vehicles, visits, calendar) — each takes over its thin Sales stage on the same record
 - [ ] Phase 5: Finance phase 2 (revenue, collection, customer invoices) + Sustainability + Marketing phases 1–2 + IT
-- [ ] Phase 6: HR payroll, performance, training, recruitment, end of service + Marketing phase 3 + CS app customers and company portal
+- [ ] Phase 6: Marketing phase 3 + CS app customers and company portal (HR payroll, performance, training, recruitment and end of service moved to Phase H)
 - [ ] Phase 7: Finance phase 3 (ZATCA integration; earlier if the cooperative's wave requires it), channel integrations, Qiwa/GOSI, mobile app APIs, Marketing phase 4
 
 Finish a phase, demo it to the user (on staging once DECISIONS §1 is cleared), then start the next.
