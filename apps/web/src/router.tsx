@@ -71,6 +71,18 @@ import { TeamAttendancePage } from './pages/manager/TeamAttendancePage';
 import { HrAttendancePage } from './pages/hr/AttendancePage';
 import { ShiftsPage } from './pages/hr/ShiftsPage';
 import { LeaveBalancesPage } from './pages/hr/LeaveBalancesPage';
+import { PayrollPage } from './pages/hr/PayrollPage';
+import { PayrollRunPage } from './pages/hr/PayrollRunPage';
+import { PayslipsPage } from './pages/me/PayslipsPage';
+import { PerformancePage } from './pages/hr/PerformancePage';
+import { AppraisalPage } from './pages/hr/AppraisalPage';
+import { ImprovementPlanPage } from './pages/hr/ImprovementPlanPage';
+import { TeamAppraisalsPage } from './pages/manager/TeamAppraisalsPage';
+import { MyPerformancePage } from './pages/me/PerformancePage';
+import { DisciplinaryActionPage, DisciplinePage } from './pages/hr/DisciplinePage';
+import { TrainingPage } from './pages/hr/TrainingPage';
+import { TrainingCoursePage } from './pages/hr/TrainingCoursePage';
+import { MyTrainingPage } from './pages/me/TrainingPage';
 
 export const router = createBrowserRouter([
   {
@@ -105,6 +117,16 @@ export const router = createBrowserRouter([
               // H2 attendance [HR §3.4]: the employee's screen, the manager's team view; HR screens below.
               { path: '/me/attendance', element: <AttendancePage /> },
               { path: '/manager/attendance', element: <TeamAttendancePage /> },
+              // H3a [HR §3.6–3.8]: own payslips, own performance and training; the manager's appraisals.
+              { path: '/me/payslips', element: <PayslipsPage /> },
+              { path: '/me/performance', element: <MyPerformancePage /> },
+              { path: '/me/training', element: <MyTrainingPage /> },
+              { path: '/manager/appraisals', element: <TeamAppraisalsPage /> },
+              // Appraisal, plan and action details: the API decides per record (employee / manager / HR).
+              { path: '/hr/performance/appraisals/:id', element: <AppraisalPage /> },
+              { path: '/hr/performance/plans/:id', element: <ImprovementPlanPage /> },
+              { path: '/hr/discipline/:id', element: <DisciplinaryActionPage /> },
+              { path: '/hr/training/:id', element: <TrainingCoursePage /> },
               { path: '/me/tickets', element: <TicketsListPage view="mine" /> },
               { path: '/tickets', element: <TicketsListPage view="assigned" /> },
               { path: '/tickets/:id', element: <TicketDetailPage /> },
@@ -179,6 +201,32 @@ export const router = createBrowserRouter([
               {
                 element: <RequirePermission resource="hr.leave" action="view" />,
                 children: [{ path: '/hr/leave', element: <LeaveBalancesPage /> }],
+              },
+              {
+                element: <RequirePermission resource="hr.payroll" action="view" />,
+                children: [
+                  { path: '/hr/payroll', element: <PayrollPage /> },
+                  { path: '/hr/payroll/:id', element: <PayrollRunPage /> },
+                ],
+              },
+              {
+                element: <RequirePermission resource="finance.payroll" action="view" />,
+                children: [
+                  { path: '/finance/payroll', element: <PayrollPage finance /> },
+                  { path: '/finance/payroll/:id', element: <PayrollRunPage finance /> },
+                ],
+              },
+              {
+                element: <RequirePermission resource="hr.appraisals" action="view" />,
+                children: [{ path: '/hr/performance', element: <PerformancePage /> }],
+              },
+              {
+                element: <RequirePermission resource="hr.discipline" action="view" />,
+                children: [{ path: '/hr/discipline', element: <DisciplinePage /> }],
+              },
+              {
+                element: <RequirePermission resource="hr.training" action="view" />,
+                children: [{ path: '/hr/training', element: <TrainingPage /> }],
               },
               {
                 element: <RequirePermission resource="crm.customers" action="view" />,

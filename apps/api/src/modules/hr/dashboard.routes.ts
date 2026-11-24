@@ -20,6 +20,8 @@ import { PENDING_STATES } from './requests.routes';
 import { EXPIRING_KINDS, expiringRows, type ExpiringKind } from './expiring';
 import { EmployeeReport } from './reports.model';
 import { AttendanceDay } from './attendance.model';
+import { Appraisal, AppraisalCycle, Goal } from './performance.model';
+import { Training } from './training.model';
 import { dayTime, summarizeDays } from './attendance.service';
 
 export const dashboardRouter = Router();
@@ -188,7 +190,23 @@ dashboardRouter.get(
       }),
     ]);
     const att = summarizeDays(dayRows as never);
+    // «مؤشرات الأداء» [HR §5 خامساً]: appraisal completion of the open cycles, employees with goals, trainings done in the period.
+    const openCycles = await AppraisalCycle.find({ state: 'open' }).select('_id').lean();
+    const [apprTotal, apprDone, withGoals, trainingsDone] = await Promise.all([
+      Appraisal.countDocuments({ cycleId: { $in: openCycles.map((c) => c._id) }, state: { $ne: 'cancelled' } }),
+      Appraisal.countDocuments({ cycleId: { $in: openCycles.map((c) => c._id) }, state: { $in: ['approved', 'acknowledged'] } }),
+      Goal.distinct('employeeId', { deletedAt: null, state: { $in: ['active', 'achieved'] }, employeeId: { $in: [...employeeIds] } }).then((x) => x.length),
+      Training.countDocuments({ deletedAt: null, state: 'completed', endAt: createdIn }),
+    ]);
     res.json({
+      performance: {
+        appraisalCompletionBp: apprTotal ? Math.round((apprDone / apprTotal) * 10_000) : null,
+        appraisalsTotal: apprTotal,
+        appraisalsDone: apprDone,
+        employeesWithGoals: withGoals,
+        trainingsCompleted: trainingsDone,
+        promotions: events.filter((e) => e.type === 'promotion').length,
+      },
       attendance: {
         period,
         absent: att.absentDays,

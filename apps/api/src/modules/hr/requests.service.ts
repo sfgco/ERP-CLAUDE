@@ -24,6 +24,7 @@ import { claimAttachments } from '../../core/files/service';
 import { withTransaction } from '../../db';
 import { applyApprovedRequest, daysBetween, recomputeDays, validateAttendanceRequest } from './attendance.service';
 import { onLeaveApproved, validateLeaveRequest } from './leave.service';
+import { onAdvanceApproved } from './payroll.service';
 
 const ATTENDANCE_TYPES = new Set(['attendance_correction', 'geofence_exception', 'overtime']);
 
@@ -361,6 +362,8 @@ export async function transition(
         recomputeAfter = daysBetween(range.from, range.to, 120);
       } else if (ATTENDANCE_TYPES.has(doc.type) || doc.type === 'remote_work') {
         recomputeAfter = await applyApprovedRequest(doc as never, opts.actor, session, now);
+      } else if (doc.type === 'advance') {
+        await onAdvanceApproved(doc as never, session, now); // the instalment plan payroll deducts from (H3a, Q8)
       }
     }
     // Certificates are generated on approval [HR §3.5.4–3.5.5], only by the transition that won.

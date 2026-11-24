@@ -45,6 +45,9 @@ import { newsRouter } from './modules/news/routes';
 import { employeeReportsRouter } from './modules/hr/reports.routes';
 import { dashboardRouter } from './modules/hr/dashboard.routes';
 import { attendanceRouter, leaveRouter, shiftsRouter } from './modules/hr/attendance.routes';
+import { financePayrollRouter, payrollRouter, payslipsRouter } from './modules/hr/payroll.routes';
+import { disciplineRouter, performanceRouter } from './modules/hr/performance.routes';
+import { trainingRouter } from './modules/hr/training.routes';
 
 /**
  * Express app. Staff realm under /api/v1; the external realm (/api/portal) is added with the
@@ -99,6 +102,13 @@ export function createApp(): Express {
   v1.use('/hr/attendance', attendanceRouter);
   v1.use('/hr/shifts', shiftsRouter);
   v1.use('/hr/leave', leaveRouter);
+  // H3a — payroll (with the thin Finance stage), performance, training [HR §3.6–3.8]
+  v1.use('/hr/payroll', payrollRouter);
+  v1.use('/hr/payslips', payslipsRouter);
+  v1.use('/finance/payroll', financePayrollRouter);
+  v1.use('/hr/performance', performanceRouter);
+  v1.use('/hr/discipline', disciplineRouter);
+  v1.use('/hr/training', trainingRouter);
   v1.use('/tickets', ticketsRouter);
   v1.use('/news', newsRouter);
   v1.use('/hr', hrRouter);

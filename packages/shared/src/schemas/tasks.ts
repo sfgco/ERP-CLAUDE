@@ -9,6 +9,9 @@ export const TASK_SOURCE_TYPES = [
   'customer',
   'opportunity',
   'sales_request',
+  // HR H3a [HR §3.7, §3.8]: a course appears in «مهامي»; an improvement plan's follow-up too.
+  'training',
+  'improvement_plan',
 ] as const;
 export type TaskSourceType = (typeof TASK_SOURCE_TYPES)[number];
 

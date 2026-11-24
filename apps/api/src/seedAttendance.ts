@@ -16,7 +16,7 @@ import { serviceYears } from './modules/hr/leave.service';
 
 /**
  * Sample attendance data [HR §3.4] for local testing — shifts (Q1 provisional hours), a second operating site, field
- * assignments, opening leave balances (Q7) and thirty days of punches in every state (present / late / early leave /
+ * assignments, opening leave balances (Q7) and sixty days of punches in every state (present / late / early leave /
  * missing check-out / absent, today in progress). Idempotent: skipped once a shift exists. Sites are samples (Q2).
  */
 export async function seedAttendance(): Promise<{ shifts: number; punches: number; balances: number }> {
@@ -130,7 +130,7 @@ export async function seedAttendance(): Promise<{ shifts: number; punches: numbe
   }
   void LEAVE_TYPES;
 
-  // Thirty days of punches up to yesterday (the whole current month), every state; today in progress for a third of the staff.
+  // Sixty days of punches up to yesterday (this month and last month's payroll window), every state; today in progress for a third of the staff.
   const siteOf = (e: InstanceType<typeof Employee>) => (e.siteId ? String(e.siteId) === String(mainSite?._id) : true) ? mainSite : sortingSite;
   let punches = 0;
   const hhmm = (base: string, deltaMin: number) => {
@@ -158,7 +158,7 @@ export async function seedAttendance(): Promise<{ shifts: number; punches: numbe
   };
   for (const [i, e] of employees.entries()) {
     const isManager = /مدير/.test(e.positionId ? (positionTitle.get(String(e.positionId)) ?? '') : '');
-    for (let back = 30; back >= 1; back--) {
+    for (let back = 60; back >= 1; back--) {
       const day = addDays(today, -back);
       const sched = await scheduleFor(e, day);
       if (!sched.window) continue; // weekend / no schedule
@@ -180,7 +180,7 @@ export async function seedAttendance(): Promise<{ shifts: number; punches: numbe
       const at = new Date(sched.window.start.getTime() - 3 * 60_000);
       if (at < now) await insert(e, today, 'in', riyadhClock(at), siteOf(e));
     }
-    await recomputeRange(e._id, addDays(today, -30), today, now);
+    await recomputeRange(e._id, addDays(today, -60), today, now);
   }
   void AttendanceDay;
   return { shifts: shifts.size, punches, balances };

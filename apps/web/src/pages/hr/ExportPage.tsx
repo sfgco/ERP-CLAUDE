@@ -56,8 +56,10 @@ export function ExportPage() {
     enabled: empSearch.trim().length >= 2,
   });
   const ATTENDANCE_RESOURCES = ['hr.attendance_log', 'hr.lateness_log', 'hr.absence_log', 'hr.hours_overtime', 'hr.corrections', 'hr.attendance_monthly_employee', 'hr.attendance_totals', 'hr.leave_balances', 'hr.leave_taken'];
+  const H3A_RESOURCES = ['hr.payroll_register', 'hr.appraisals', 'hr.goals', 'hr.trainings', 'hr.training_participants', 'hr.discipline'];
+  const h3aResource = H3A_RESOURCES.includes(resource);
   const attendanceResource = ATTENDANCE_RESOURCES.includes(resource);
-  const employeeAware = resource === 'employees' || resource === 'hr.documents_expiring' || attendanceResource;
+  const employeeAware = resource === 'employees' || resource === 'hr.documents_expiring' || attendanceResource || (h3aResource && resource !== 'hr.trainings');
   const current = useMemo(
     () => resources.data?.items.find((r) => r.resource === resource),
     [resources.data, resource],
@@ -381,6 +383,44 @@ export function ExportPage() {
                       ))}
                     </Select>
                   </Field>
+                </div>
+              </Card>
+            )}
+            {h3aResource && (
+              <Card title={t('export.filters')}>
+                <div className="space-y-2">
+                  {resource === 'hr.payroll_register' && (
+                    <Field label={t('payroll.period')} hint={t('payroll.periodHint')}>
+                      <Input dir="ltr" value={filters.period ?? ''} onChange={(e) => setFilters((s) => ({ ...s, period: e.target.value }))} />
+                    </Field>
+                  )}
+                  {['hr.payroll_register', 'hr.trainings', 'hr.training_participants'].includes(resource) && (
+                    <Field label={t('leave.year')}>
+                      <Input type="number" dir="ltr" value={filters.year ?? ''} onChange={(e) => setFilters((s) => ({ ...s, year: e.target.value }))} />
+                    </Field>
+                  )}
+                  {resource === 'hr.discipline' && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Field label={t('export.from')}>
+                        <Input type="date" dir="ltr" value={filters.from ?? ''} onChange={(e) => setFilters((s) => ({ ...s, from: e.target.value }))} />
+                      </Field>
+                      <Field label={t('export.to')}>
+                        <Input type="date" dir="ltr" value={filters.to ?? ''} onChange={(e) => setFilters((s) => ({ ...s, to: e.target.value }))} />
+                      </Field>
+                    </div>
+                  )}
+                  {resource !== 'hr.trainings' && (
+                    <Field label={t('hr.department')}>
+                      <Select value={filters.departmentId ?? ''} onChange={(e) => setFilters((s) => ({ ...s, departmentId: e.target.value }))}>
+                        <option value="">{t('common.all')}</option>
+                        {lk.departments.map((x) => (
+                          <option key={x._id} value={x._id}>
+                            {x.nameAr}
+                          </option>
+                        ))}
+                      </Select>
+                    </Field>
+                  )}
                 </div>
               </Card>
             )}

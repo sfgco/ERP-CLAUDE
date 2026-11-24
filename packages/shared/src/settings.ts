@@ -7,6 +7,14 @@ import { DEFAULT_FACILITY_SIZES, DEFAULT_LOSS_REASONS } from './schemas/sales';
 import { SALES_LIST_KEYS } from './schemas/salesRequests';
 import { DEFAULT_QUOTE_REJECTION_REASONS } from './schemas/salesPricing';
 import {
+  DEFAULT_APPRAISAL_POLICY,
+  DEFAULT_DISCIPLINE_POLICY,
+  appraisalPolicySchema,
+  disciplinePolicySchema,
+} from './schemas/performance';
+import { DEFAULT_GOSI_RATES, DEFAULT_PAYROLL_POLICY, gosiRatesSchema, payrollPolicySchema } from './schemas/payroll';
+import { DEFAULT_TRAINING_POLICY, trainingPolicySchema } from './schemas/training';
+import {
   attendanceRulesSchema,
   correctionPolicySchema,
   DEFAULT_LEAVE_POLICIES,
@@ -458,6 +466,51 @@ export const SETTING_DEFINITIONS = {
     schema: leavePoliciesSchema,
     default: DEFAULT_LEAVE_POLICIES,
     provisional: true,
+  }),
+  // ---- Payroll, performance, training [HR §3.6–3.8; HR_PLAN §8; DECISIONS §21 Q8, Q11, Q12, Q18]
+  'hr.payroll.policy': def({
+    key: 'hr.payroll.policy',
+    labelAr: 'سياسة الرواتب: البدلات، أجر التأمينات، صيغة يوم الغياب، خصم التأخير، حد الاستقطاع، يوم القطع ويوم الصرف، إظهار القسيمة',
+    descriptionAr:
+      'Q8 (مقترح الخطة): يوم الغياب = الأجر الشهري ÷ 30، لا خصم تأخير حتى تقرر الموارد البشرية، الاستقطاعات ≤ 50% (المادة 92)، القطع 25 والصرف 27 — قائمة البدلات ومواعيد القطع والصرف مؤقتة حتى اعتماد الموارد البشرية',
+    group: 'hr',
+    schema: payrollPolicySchema,
+    default: DEFAULT_PAYROLL_POLICY,
+    provisional: true,
+  }),
+  'hr.payroll.gosiRates': def({
+    key: 'hr.payroll.gosiRates',
+    labelAr: 'نسب التأمينات الاجتماعية بتاريخ فعالية حسب المجموعة (سعودي قبل 3 يوليو 2024 / بعده / غير سعودي)',
+    descriptionAr: 'DECISIONS §21 Q8: حصة الموظف وصاحب العمل بنقاط الأساس؛ المجموعة من الجنسية وتاريخ الانضمام للتأمينات على الملف',
+    group: 'hr',
+    schema: gosiRatesSchema,
+    default: DEFAULT_GOSI_RATES,
+  }),
+  'hr.appraisal': def({
+    key: 'hr.appraisal',
+    labelAr: 'تقييم الأداء: الحد الأدنى للخدمة، مدة خطة التحسين، مواعيد الدورات نصف السنوية والسنوية',
+    descriptionAr: 'Q11 (مقترح): خدمة 90 يوماً، خطة تحسين 90 يوماً، النصف الأول يناير–يونيو يُفتح 1 يوليو ويُسلَّم 31 يوليو، السنوي يُفتح 1 يناير ويُسلَّم 31 يناير — مؤقت حتى اعتماد الموارد البشرية',
+    group: 'hr',
+    schema: appraisalPolicySchema,
+    default: DEFAULT_APPRAISAL_POLICY,
+    provisional: true,
+  }),
+  'hr.discipline': def({
+    key: 'hr.discipline',
+    labelAr: 'الإجراءات الإدارية: سلّم الإنذارات، مهلة الاعتراض، مهلة اكتشاف المخالفة، من يُصدر ومن يعتمد',
+    descriptionAr: 'Q11: السلّم من المواد 66–73 مؤقت حتى مطابقته مع لائحة تنظيم العمل المعتمدة؛ الاعتراض 15 يوماً؛ لا جزاء لمخالفة اكتُشفت قبل أكثر من 30 يوماً (المادة 71)',
+    group: 'hr',
+    schema: disciplinePolicySchema,
+    default: DEFAULT_DISCIPLINE_POLICY,
+    provisional: true,
+  }),
+  'hr.training': def({
+    key: 'hr.training',
+    labelAr: 'التدريب: من يرفع الاحتياجات، من يعتمد الخطة السنوية، التذكير قبل الدورة',
+    descriptionAr: 'Q12 (مقترح): مديرو الأقسام يرفعون الاحتياجات ومدير الموارد البشرية يعتمد الخطة',
+    group: 'hr',
+    schema: trainingPolicySchema,
+    default: DEFAULT_TRAINING_POLICY,
   }),
   'hr.probationAlertDaysBefore': def({
     key: 'hr.probationAlertDaysBefore',

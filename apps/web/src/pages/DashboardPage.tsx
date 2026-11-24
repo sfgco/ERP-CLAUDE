@@ -5,6 +5,8 @@ import {
   Bell,
   Briefcase,
   Fingerprint,
+  Wallet,
+  Award,
   Cake,
   CalendarDays,
   ClipboardList,
@@ -151,6 +153,8 @@ export function DashboardPage() {
         )}
         {can('hr.attendance', 'create') &&
           tile('/me/attendance', Fingerprint, t('dashboard.sections.attendance'), t('dashboard.attendanceHint'))}
+        {can('hr.payslips', 'view') && tile('/me/payslips', Wallet, t('dashboard.sections.payslips'), t('dashboard.payslipsHint'))}
+        {can('hr.goals', 'view') && tile('/me/performance', Award, t('dashboard.sections.performance'), t('dashboard.performanceHint'))}
         {tile(
           '/me/requests',
           Ticket,

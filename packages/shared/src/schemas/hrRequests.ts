@@ -141,6 +141,8 @@ export const HR_REQUEST_DETAIL_SCHEMAS = {
     amountHalalas: z.number().int().positive(),
     reason: z.string().trim().min(2).max(1000),
     notes: z.string().trim().max(1000).optional(),
+    /** Number of equal monthly instalments deducted by payroll (Q8: «count per the request»); default 1. */
+    instalments: z.number().int().min(1).max(36).optional(),
   }),
   data_update: z.object({
     changes: z

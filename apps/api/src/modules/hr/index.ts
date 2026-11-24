@@ -31,6 +31,13 @@ import { ON_DUTY_STATUSES } from './service';
 import { runAttendanceCompute } from './attendance.service';
 import { runLeaveAccrual } from './leave.service';
 import { registerAttendanceExports } from './attendance.exports';
+import { registerH3aExports } from './h3a.exports';
+import { runPayrollCutoffReminder } from './payroll.service';
+import { registerPerformanceHandlers, runAppraisalJobs, runPerformanceFollowUps } from './performance.service';
+import { runTrainingReminders } from './training.service';
+import { Training } from './training.model';
+import { ImprovementPlan } from './performance.model';
+import type { RoleDefinition } from '@eayni/shared';
 import {
   runAccountDeactivation,
   runBirthdayGreetings,
@@ -241,6 +248,21 @@ export function registerHrModule(): void {
   registerJob('hr.attendance.compute', (now) => runAttendanceCompute(now), 'frequent');
   registerJob('hr.leave.accrual', (now) => runLeaveAccrual(now));
   registerAttendanceExports();
+  // H3a [HR §3.6–3.8]: payroll cut-off reminder, appraisal cycles and reminders, improvement-plan reviews and appeal windows, training reminders.
+  registerJob('hr.payroll.cutoff', (now) => runPayrollCutoffReminder(now));
+  registerJob('hr.appraisals', (now) => runAppraisalJobs(now));
+  registerJob('hr.performance.followups', (now) => runPerformanceFollowUps(now));
+  registerJob('hr.training.reminders', (now) => runTrainingReminders(now));
+  registerPerformanceHandlers();
+  registerH3aExports();
+  registerTaskSourceResolver('training', async (idOrNumber) => {
+    const t = await Training.findOne({ deletedAt: null, $or: [...(/^[0-9a-f]{24}$/i.test(idOrNumber) ? [{ _id: idOrNumber }] : []), { number: idOrNumber }] }).select('number title').lean();
+    return t ? { id: String(t._id), label: `${t.number} ${t.title}` } : null;
+  });
+  registerTaskSourceResolver('improvement_plan', async (id) => {
+    const p = /^[0-9a-f]{24}$/i.test(id) ? await ImprovementPlan.findById(id).select('to').lean() : null;
+    return p ? { id: String(p._id), label: `خطة تحسين أداء حتى ${p.to}` } : null;
+  });
 
   // Field-picker export [HR §4]; sensitive columns need field-level permission.
   registerExportResource({
@@ -454,4 +476,23 @@ function employeeIdsFilter(filters: Record<string, unknown>): Record<string, unk
       : [];
   const ids = raw.map(String).filter((x) => /^[0-9a-f]{24}$/i.test(x));
   return ids.length ? { _id: { $in: ids } } : undefined;
+}
+
+/**
+ * Grants the Finance roles need for the thin payroll stage [HR §3.6.7, FIN §5, §12] — merged into the core Finance role
+ * definitions by the baseline, like the invoice register. Finance staff review and return; the manager approves and
+ * either of them records the payment (never the one who approved — enforced in the service).
+ */
+export function HR_FINANCE_GRANTS(roleCode: string): RoleDefinition['grants'] {
+  if (roleCode === 'finance_manager')
+    return [
+      { resource: 'finance.payroll', actions: ['view', 'approve', 'edit'], scope: 'all' },
+      { resource: 'hr.payslips', actions: ['view'], scope: 'all' },
+    ];
+  if (roleCode === 'finance_staff')
+    return [
+      { resource: 'finance.payroll', actions: ['view', 'edit'], scope: 'all' },
+      { resource: 'hr.payslips', actions: ['view'], scope: 'all' },
+    ];
+  return [];
 }

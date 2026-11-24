@@ -42,6 +42,10 @@ import {
   Clock3,
   CalendarRange,
   Palmtree,
+  Wallet,
+  Award,
+  GraduationCap,
+  Gavel,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { usePrefs } from '@/lib/preferences';
@@ -172,6 +176,11 @@ export function AppShell() {
     // «الحضور والانصراف» for every employee with a file [HR §3.4 ثالثاً]; the team view for direct managers.
     { to: '/me/attendance', label: t('nav.attendance'), icon: Fingerprint, show: can('hr.attendance', 'create') },
     { to: '/manager/attendance', label: t('nav.teamAttendance'), icon: Clock3, show: !!team.data?.items.length },
+    // H3a [HR §3.6.9, §3.7, §3.8]: own payslips, own performance and training; the manager's appraisals.
+    { to: '/me/payslips', label: t('nav.myPayslips'), icon: Wallet, show: can('hr.payslips', 'view') },
+    { to: '/me/performance', label: t('nav.myPerformance'), icon: Award, show: can('hr.goals', 'view') },
+    { to: '/me/training', label: t('nav.myTraining'), icon: GraduationCap, show: can('hr.training', 'view') },
+    { to: '/manager/appraisals', label: t('nav.teamAppraisals'), icon: Award, show: !!team.data?.items.length },
     { to: '/me/tickets', label: t('nav.myTickets'), icon: Ticket, show: can('tickets', 'view') },
     { to: '/manager/requests', label: t('nav.teamRequests'), icon: Inbox, show: !!inbox.data?.total },
     { to: '/manager/team', label: t('nav.team'), icon: Users, show: !!team.data?.items.length },
@@ -270,6 +279,27 @@ export function AppShell() {
       label: t('nav.leave'),
       icon: Palmtree,
       show: can('hr.leave', 'view') && (user?.permissions.find((p) => p.resource === 'hr.leave')?.scope ?? 'own') !== 'own',
+    },
+    // H3a [HR §3.6–3.8]
+    { to: '/hr/payroll', label: t('nav.payroll'), icon: Wallet, show: can('hr.payroll', 'view') },
+    { to: '/finance/payroll', label: t('nav.financePayroll'), icon: Wallet, show: can('finance.payroll', 'view') },
+    {
+      to: '/hr/performance',
+      label: t('nav.performance'),
+      icon: Award,
+      show: can('hr.appraisals', 'view') && (user?.permissions.find((p) => p.resource === 'hr.appraisals')?.scope ?? 'own') !== 'own' && !!user?.roles.some((r) => ['hr_officer', 'hr_manager', 'executive'].includes(r.role)),
+    },
+    {
+      to: '/hr/discipline',
+      label: t('nav.discipline'),
+      icon: Gavel,
+      show: can('hr.discipline', 'create') || (can('hr.discipline', 'view') && (user?.permissions.find((p) => p.resource === 'hr.discipline')?.scope ?? 'own') === 'all'),
+    },
+    {
+      to: '/hr/training',
+      label: t('nav.training'),
+      icon: GraduationCap,
+      show: can('hr.training', 'view') && (user?.permissions.find((p) => p.resource === 'hr.training')?.scope ?? 'own') !== 'own',
     },
     {
       to: '/hr/profile-changes',

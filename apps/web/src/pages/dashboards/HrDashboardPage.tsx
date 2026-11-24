@@ -45,6 +45,7 @@ interface Data {
     byAge: { d0_2: number; d3_7: number; d8plus: number };
   };
   attendance: { period: { from: string; to: string }; absent: number; late: number; missingPunches: number; workedMinutes: number; overtimeApprovedMinutes: number; onLeaveToday: number };
+  performance: { appraisalCompletionBp: number | null; appraisalsTotal: number; appraisalsDone: number; employeesWithGoals: number; trainingsCompleted: number; promotions: number };
   secondmentsWithoutReport: number;
   probationEnding30: number;
   recentChanges: { _id: string; employeeId: string; type: string; at: string; effectiveDate?: string }[];
@@ -177,6 +178,14 @@ export function HrDashboardPage() {
         <Kpi to={`/hr/attendance?from=${range.from}&to=${range.to}`} label={t('dash.hr.attHours')} value={Math.round(d.attendance.workedMinutes / 60)} hint={`${t('attendance.overtimeApproved')}: ${Math.round(d.attendance.overtimeApprovedMinutes / 60)}`} />
         <Kpi to={`/hr/attendance?from=${range.from}&to=${range.to}&exceptionsOnly=1`} label={t('dash.hr.attMissing')} value={d.attendance.missingPunches} tone={d.attendance.missingPunches ? 'amber' : 'slate'} />
         <Kpi to="/hr/employees?status=on_leave" label={t('dash.hr.attOnLeave')} value={d.attendance.onLeaveToday} tone="blue" />
+      </div>
+      {/* Performance cards [HR §5 fifth group] */}
+      <h2 className="mt-4 text-sm font-semibold text-slate-700">{t('dash.hr.performance')}</h2>
+      <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Kpi to="/hr/performance" label={t('dash.hr.perfCompletion')} value={d.performance.appraisalCompletionBp === null ? '—' : `${Math.round(d.performance.appraisalCompletionBp / 100)}%`} hint={`${d.performance.appraisalsDone} / ${d.performance.appraisalsTotal}`} tone="blue" />
+        <Kpi to="/hr/performance" label={t('dash.hr.perfWithGoals')} value={d.performance.employeesWithGoals} hint={t('dash.hr.perfOf', { n: d.headcount.total })} />
+        <Kpi to="/hr/training" label={t('dash.hr.perfTrainings')} value={d.performance.trainingsCompleted} tone="green" />
+        <Kpi to="/hr/employees" label={t('dash.hr.perfPromotions')} value={d.performance.promotions} hint={t('dash.hr.recentChanges')} />
       </div>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <Card title={t('dash.hr.byDepartment')}>

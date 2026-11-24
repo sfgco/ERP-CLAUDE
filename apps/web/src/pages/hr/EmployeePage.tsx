@@ -32,17 +32,18 @@ import { sar, useHrLookups, type EmployeeFull } from './_data';
 import { riyadhToday } from '@/lib/dates';
 import { typeLabel, useReportTypes, useReports } from '../reports/_data';
 import { EmployeeAttendanceTab, EmployeeLeaveTab } from './EmployeeAttendanceTabs';
+import { EmployeeDisciplineTab, EmployeePayrollTab, EmployeePerformanceTab } from './EmployeeH3aTabs';
 
 const CUSTODY_CONDITIONS = ['good', 'damaged', 'lost'] as const;
 import { statusTone } from './EmployeesPage';
 
-type Tab = 'data' | 'job' | 'contracts' | 'documents' | 'custody' | 'reports' | 'attendance' | 'leave';
+type Tab = 'data' | 'job' | 'contracts' | 'documents' | 'custody' | 'reports' | 'attendance' | 'leave' | 'payroll' | 'performance' | 'discipline';
 
 /** Employee file [HR §3.3]: data, job + history [HR §3.1], contracts [HR §3.9], documents, custody. */
 export function EmployeePage() {
   const { id = '' } = useParams();
   const { t } = useTranslation();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const lk = useHrLookups();
   const [tab, setTab] = useState<Tab>('data');
   const emp = useQuery({
@@ -64,6 +65,10 @@ export function EmployeePage() {
     // H2 [HR §3.4, §3.5.1, §9.3]
     ...(can('hr.attendance', 'view') ? [{ key: 'attendance' as Tab, label: t('hr.tabs.attendance') }] : []),
     ...(can('hr.leave', 'view') ? [{ key: 'leave' as Tab, label: t('hr.tabs.leave') }] : []),
+    // H3a [HR §3.6, §3.7, §3.8, §9.3]: payroll for HR / Finance only; performance and training; administrative actions.
+    ...(can('hr.payslips', 'view') && user?.permissions.find((p) => p.resource === 'hr.payslips')?.scope === 'all' ? [{ key: 'payroll' as Tab, label: t('hr.tabs.payroll') }] : []),
+    ...(can('hr.appraisals', 'view') ? [{ key: 'performance' as Tab, label: t('hr.tabs.performance') }] : []),
+    ...(can('hr.discipline', 'view') ? [{ key: 'discipline' as Tab, label: t('hr.tabs.discipline') }] : []),
   ];
   return (
     <>
@@ -105,6 +110,9 @@ export function EmployeePage() {
       {tab === 'reports' && <ReportsTab e={e} />}
       {tab === 'attendance' && <EmployeeAttendanceTab employeeId={e._id} />}
       {tab === 'leave' && <EmployeeLeaveTab employeeId={e._id} />}
+      {tab === 'payroll' && <EmployeePayrollTab employeeId={e._id} />}
+      {tab === 'performance' && <EmployeePerformanceTab employeeId={e._id} fullNameAr={e.fullNameAr} employeeNumber={e.employeeNumber} />}
+      {tab === 'discipline' && <EmployeeDisciplineTab employeeId={e._id} />}
     </>
   );
 }

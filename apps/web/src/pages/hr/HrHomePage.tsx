@@ -13,6 +13,7 @@ interface Dash {
   secondmentsWithoutReport: number;
   probationEnding30: number;
   attendance: { missingPunches: number; late: number; absent: number; onLeaveToday: number };
+  performance: { appraisalsTotal: number; appraisalsDone: number; appraisalCompletionBp: number | null };
 }
 
 /**
@@ -28,6 +29,16 @@ export function HrHomePage() {
     queryKey: ['hr-requests', 'queue', 'count'],
     queryFn: () => get<Paged<unknown>>('/hr/requests?view=queue&limit=1'),
     enabled: can('hr.requests', 'approve'),
+  });
+  const payroll = useQuery({
+    queryKey: ['payroll', 'hr', 'home'],
+    queryFn: () => get<{ items: { state: string }[] }>('/hr/payroll?limit=12'),
+    enabled: can('hr.payroll', 'view'),
+  });
+  const appraisalsQueue = useQuery({
+    queryKey: ['perf', 'appraisals', 'queue'],
+    queryFn: () => get<{ total: number }>('/hr/performance/appraisals?view=all&state=manager_submitted&limit=1'),
+    enabled: can('hr.appraisals', 'approve'),
   });
   const changes = useQuery({
     queryKey: ['profile-changes', 'pending', 'count'],
@@ -71,6 +82,17 @@ export function HrHomePage() {
           value={d.secondmentsWithoutReport}
           tone={d.secondmentsWithoutReport ? 'red' : 'green'}
         />
+        {can('hr.payroll', 'view') && payroll.data && (
+          <Kpi
+            to="/hr/payroll"
+            label={t('hr.home.payrollOpen')}
+            value={payroll.data.items.filter((r) => !['paid', 'closed', 'cancelled'].includes(r.state)).length}
+            tone={payroll.data.items.some((r) => ['under_hr_review', 'returned', 'finance_returned'].includes(r.state)) ? 'amber' : 'slate'}
+          />
+        )}
+        {can('hr.appraisals', 'approve') && (
+          <Kpi to="/hr/performance" label={t('hr.home.appraisalsQueue')} value={appraisalsQueue.data?.total ?? '…'} tone={appraisalsQueue.data?.total ? 'amber' : 'slate'} />
+        )}
         {can('hr.attendance', 'view') && (
           <Kpi
             to="/hr/attendance?exceptionsOnly=1"
@@ -117,6 +139,21 @@ export function HrHomePage() {
           {can('hr.leave', 'create') && (
             <Link to="/hr/leave" className="rounded-lg border border-slate-200 px-3 py-1.5 hover:bg-slate-50">
               {t('hr.home.leave')}
+            </Link>
+          )}
+          {can('hr.payroll', 'view') && (
+            <Link to="/hr/payroll" className="rounded-lg border border-slate-200 px-3 py-1.5 hover:bg-slate-50">
+              {t('nav.payroll')}
+            </Link>
+          )}
+          {can('hr.appraisals', 'approve') && (
+            <Link to="/hr/performance" className="rounded-lg border border-slate-200 px-3 py-1.5 hover:bg-slate-50">
+              {t('nav.performance')}
+            </Link>
+          )}
+          {can('hr.training', 'edit') && (
+            <Link to="/hr/training" className="rounded-lg border border-slate-200 px-3 py-1.5 hover:bg-slate-50">
+              {t('nav.training')}
             </Link>
           )}
           {can('hr.employees', 'export') && (

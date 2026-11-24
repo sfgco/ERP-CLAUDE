@@ -170,32 +170,34 @@ Built in **H2** (2026-11-24, branch `hr-h2`): `apps/api/src/modules/hr/attendanc
 
 ## §3.6 إدارة الرواتب والمزايا
 
+Built in **H3a** (2026-11-24, branch `hr-h3a`) together with §3.7 and §3.8: `modules/hr/payroll.{model,service,routes}.ts`, `performance.{model,service,routes}.ts`, `training.{model,service,routes}.ts`, `workflows.ts`, `h3a.exports.ts`, `core/kpi/registry.ts`; tests `hr-h3a.test.ts`. Provisional (Q8 / Q11): payroll policy, appraisal dates and template, the warnings ladder.
+
 | § | Bullet | Implementation | Test | Status |
 |---|---|---|---|---|
-| §3.6 | ربطها ببيانات الحضور والانصراف والإجازات | payslip lines from locked `attendanceDays` and the leave ledger | — | 🔜 H3a |
+| §3.6 | ربطها ببيانات الحضور والانصراف والإجازات | `computePayslip` reads the window's `attendanceDays` (absence, lateness, approved overtime, leave days with the leave policy's paid share) and locks them at submission | `hr-h3a.test.ts` «prepares a run from the salary master and the locked attendance window…» | ✅ |
 | §3.6.1 | تسجيل الراتب الأساسي والبدلات والاستحقاقات | `employees.basicSalaryHalalas`, `allowances[] {type, amountHalalas}`, `bank` (IBAN encrypted); HR edits, Finance reads (DECISIONS §7); portal «التفاصيل المالية» read-only | `hr.test.ts` first test (own sensitive data visible, colleagues not); `golive-access.test.ts` E1 (Finance sees pay and bank only) | ✅ (allowance list ⏸ Q8 provisional) |
-| §3.6.2 | إعداد مسير الرواتب الشهري | `payrollRuns` `PAY-YYYY-#####`, workflow `hr_payroll_run`, `/hr/payroll` | — | 🔜 H3a |
-| §3.6.3 | احتساب الاستقطاعات وفق السياسات والأنظمة المعتمدة | `hr.payroll` policies; GOSI effective-dated table by join date (DECISIONS §21 Q8); `employees.gosiJoinDate` on the file, HR-edited, shown to the employee, exported «تاريخ الانضمام للتأمينات الاجتماعية» (H1) | `hr-h1.test.ts` «§3.6.3 / DECISIONS §21 Q8: the GOSI join date…» | ✅ field · 🔜 H3a (computation, ⏸ Q8 provisional) |
-| §3.6.4 | ربط بيانات الحضور والتأخير والغياب بالمسير | absence / lateness deduction lines from H2 | — | 🔜 H3a (⏸ Q8) |
-| §3.6.5 | تسجيل العمل الإضافي وفق الاعتمادات | approved overtime minutes → earning line; compensation mode pay / leave (DECISIONS §21 Q5) | — | 🔜 H3a |
-| §3.6.6 | مراجعة مسير الرواتب قبل اعتماده | state «قيد مراجعة الموارد البشرية», preparer ≠ approver | — | 🔜 H3a |
-| §3.6.7 | رفع مسير الرواتب إلى الإدارة المالية | `hr.payroll.sent_to_finance` + thin Finance queue `/finance/payroll` | — | 🔜 H3a (⏸ Finance module takes over later) |
-| §3.6.8 | حفظ سجل مسيرات الرواتب السابقة | frozen runs and payslips, never edited | — | 🔜 H3a |
-| §3.6.9 | توفير صلاحيات محددة للاطلاع على بيانات الرواتب | field rules on `basicSalaryHalalas / allowances / bank` (HR all, Finance pay + bank, managers none); every sensitive view audited | `golive-access.test.ts` E1; `dashboard.test.ts` «…export is permission-filtered and audited as sensitive» | ✅ (payslip resources 🔜 H3a) |
+| §3.6.2 | إعداد مسير الرواتب الشهري | `payrollRuns` `PAY-YYYY-#####` (one per period, Q18: everyone, contractors excluded), workflow `hr_payroll_run`, `POST /hr/payroll` prepares, `/recompute` while draft / returned, screen `/hr/payroll`; daily cut-off reminder `hr.payroll.cutoff` | same | ✅ (cut-off / pay day ⏸ provisional Q8) |
+| §3.6.3 | احتساب الاستقطاعات وفق السياسات والأنظمة المعتمدة | `hr.payroll.policy` (absence day = wage ÷ 30, lateness none, cap 50 % per art. 92 with the excess rolled into the next run, unpaid leave share) and `hr.payroll.gosiRates` (effective-dated by group: Saudi before / from 3 Jul 2024 by `gosiJoinDate`, non-Saudi 2 % employer); advance instalments from `advanceSchedules`; fines from upheld disciplinary actions; adjustments consumed once | `hr-h3a.test.ts` (a: 9.75 %, b: 10.75 %, c: non-Saudi, capped) | ✅ (Q8 values provisional) |
+| §3.6.4 | ربط بيانات الحضور والتأخير والغياب بالمسير | absence line = `status === 'absent'` days only (**a missing check-out is never an absence**, DECISIONS §21), lateness minutes as stored by the provisional rule, `submit_for_review` locks the days (`lockedByPayrollRunId`), `cancel` unlocks | same (2 absences, 1 missing check-out, locked days, correction refused) | ✅ |
+| §3.6.5 | تسجيل العمل الإضافي وفق الاعتمادات | `overtimeApprovedMinutes` of the window × basic ÷ 30 ÷ daily hours × 150 % (art. 107), only when the request's compensation is pay | same (2 h → 6 250 halalas on 500 000) | ✅ |
+| §3.6.6 | مراجعة مسير الرواتب قبل اعتماده | `submit_for_review` → «قيد مراجعة الموارد البشرية»; the HR manager returns or approves; **the preparer can never approve** (403, FIN §12); approval freezes the run and its payslips | same | ✅ |
+| §3.6.7 | رفع مسير الرواتب إلى الإدارة المالية | HR approval sends the run to Finance at once on the same record (`send_to_finance` by the system, event `hr.payroll.sent_to_finance`, notification to Finance); thin queue `/finance/payroll`: staff return, the manager approves, someone else records the payment (date, reference, proof) → `hr.payroll.paid` | same | ✅ (the Finance module takes the stage over later) |
+| §3.6.8 | حفظ سجل مسيرات الرواتب السابقة | runs frozen at approval (`frozenAt`), payslip snapshots, stage log; register `/hr/payroll`, export `hr.payroll_register` | same | ✅ |
+| §3.6.9 | توفير صلاحيات محددة للاطلاع على بيانات الرواتب | field rules on the file (phase 1) + resources `hr.payroll` (HR; executive read), `hr.payslips` (employee own once visible, HR / Finance all, admin none), `finance.payroll` (Finance roles); HR / Finance views of payslips and runs audited as sensitive; the register's amounts are sensitive export columns | `hr-h3a.test.ts` (b 404 on a's payslip, admin 403 on runs, fm reads audited) | ✅ |
 
 ## §3.7 متابعة وتقييم أداء الموظفين
 
 | § | Bullet | Implementation | Test | Status |
 |---|---|---|---|---|
-| §3.7 | تحديد الأهداف الوظيفية لكل موظف | `goals` | — | 🔜 H3a (⏸ Q11) |
-| §3.7 | ربط الأهداف بمؤشرات أداء القسم | `goals.kpiCode` validated against the core KPI registry (`core/kpi`, Sales S4) | — | 🔜 H3a |
-| §3.7 | تسجيل المهام المسندة للموظف | core tasks (`/tasks`, EP §10) — exists; appraisal snapshot of assigned tasks | `core/tasks/tasks.test.ts`, `distribution.test.ts` | ✅ tasks · 🔜 H3a link |
-| §3.7 | متابعة نسبة الإنجاز | `goals.progress[]`, `appraisals.tasksCompletion` | — | 🔜 H3a |
-| §3.7 | تقييم الأداء نصف سنوي وسنوي | `appraisalCycles` + `appraisals`, workflow `hr_appraisal` | — | 🔜 H3a (⏸ Q11 cycle dates) |
-| §3.7 | تسجيل نتائج التقييم وملاحظات المدير المباشر | `appraisals.scores / overallScore / managerNotes` | — | 🔜 H3a |
-| §3.7 | متابعة خطط تحسين الأداء | `improvementPlans` with append-only reviews | — | 🔜 H3a |
-| §3.7 | تسجيل الدورات التدريبية والشهادات | `trainingParticipants.certificateAttachmentId` (§3.8) | — | 🔜 H3a |
-| §3.7 | تسجيل الإنذارات والإجراءات الإدارية وفق الصلاحيات | `disciplinaryActions` `DIS-YYYY-#####`, workflow `hr_disciplinary`, resource `hr.discipline` | — | 🔜 H3a (⏸ Q11 ladder provisional) |
+| §3.7 | تحديد الأهداف الوظيفية لكل موظف | `goals` (direct manager / HR create; weight, target, due date), `/hr/performance/goals`, screens `/manager/appraisals`, `/hr/performance`, `/me/performance`; the employee is notified (`goal.assigned`) | `hr-h3a.test.ts` «goals validate the KPI code…» | ✅ |
+| §3.7 | ربط الأهداف بمؤشرات أداء القسم | `goals.kpiCode` must exist in the KPI registry (`core/kpi/registry.ts`: Sales' five + HR's four), `GET /hr/performance/kpis` | same (unknown code → 400) | ✅ |
+| §3.7 | تسجيل المهام المسندة للموظف | core tasks (EP §10); the appraisal snapshots `tasksCompletion` {assigned, done, late} of the cycle window and the `tasks` criterion is scored from it | `core/tasks/*.test.ts`; `hr-h3a.test.ts` | ✅ |
+| §3.7 | متابعة نسبة الإنجاز | `goals.progress[]` (append-only, the employee / manager / HR update it), `goals.percent`, `appraisals.tasksCompletion` | same | ✅ |
+| §3.7 | تقييم الأداء نصف سنوي وسنوي | `appraisalCycles` (semi_annual_1 / semi_annual_2 / annual, template snapshot at opening), one `appraisal` per eligible employee pinned to the direct manager, workflow `hr_appraisal` (manager → HR → employee acknowledgement), daily job opens due cycles and reminds managers | same (open → 5 appraisals, job opens the planned cycle) | ✅ (Q11 dates provisional) |
+| §3.7 | تسجيل نتائج التقييم وملاحظات المدير المباشر | `POST /appraisals/:id/score` (manager only; goals / tasks criteria pre-filled), `overallScoreBp` + rating label from the template, `managerNotes`, HR `hrNotes`, employee `employeeComment` | same (70 % → «جيد جداً») | ✅ |
+| §3.7 | متابعة خطط تحسين الأداء | `improvementPlans` offered when the score is under the template threshold, objectives, append-only reviews, 30-day review reminders, close with outcome | same (offer → create → review → complete) | ✅ |
+| §3.7 | تسجيل الدورات التدريبية والشهادات | `trainingParticipants` with `certificateAttachmentId` (§3.8); employee tab «الأداء والتدريب» | `hr-h3a.test.ts` §3.8 test | ✅ |
+| §3.7 | تسجيل الإنذارات والإجراءات الإدارية وفق الصلاحيات | `disciplinaryActions` `DIS-YYYY-#####` on the `hr.discipline` ladder (arts. 66–73, provisional), workflow `hr_disciplinary` (issuer ≠ approver, written delivery, appeal within 15 days, auto-uphold after the window), a fine becomes a payroll adjustment once upheld; resource `hr.discipline` (employee sees delivered only) | `hr-h3a.test.ts` «disciplinary actions follow the ladder…» | ✅ (ladder ⏸ Q11) |
 | §3.7 | تسجيل الترقيات والتغييرات الوظيفية | `POST /hr/employees/:id/promote`, `/transfer`, `/manager`, `/status` → `employeeEvents` | `hr.test.ts` «transfer, promotion and manager change append history and notify the employee» | ✅ |
 | §3.7 | إرسال إشعار للموظف عند اعتماد ترقيته أو تغيير وضعه الوظيفي | `employee.promotion` on promote and on every status change (employee + direct manager, with the old and new status and the reason, H1); `employee.manager_or_department_changed` on transfer / manager change | `hr.test.ts` (promotion, transfer); `hr-h1.test.ts` «§3.7 … a status change notifies the employee and the direct manager» | ✅ |
 
@@ -203,15 +205,15 @@ Built in **H2** (2026-11-24, branch `hr-h2`): `apps/api/src/modules/hr/attendanc
 
 | § | Bullet | Implementation | Test | Status |
 |---|---|---|---|---|
-| §3.8 | سجل إلكتروني لتطوير الموظفين ومتابعة احتياجاتهم التدريبية | `/hr/training`, `/me/training` | — | 🔜 H3a |
-| §3.8.1 | إعداد خطة تدريب سنوية | `trainingPlans` | — | 🔜 H3a (⏸ Q12 approver) |
-| §3.8.2 | تحديد الاحتياجات التدريبية لكل قسم | `trainingNeeds` (`/manager/training-needs`) | — | 🔜 H3a |
-| §3.8.3 | ربط التدريب بنتائج تقييم الأداء | `trainingNeeds.appraisalId` | — | 🔜 H3a |
-| §3.8.4 | تسجيل اسم الدورة والجهة المقدمة | `trainings.title / provider` (party or text) | — | 🔜 H3a (⏸ Q12) |
-| §3.8.5 | تحديد تاريخ بداية ونهاية الدورة | `trainings.startAt / endAt` + calendar event (kind `training` exists since phase 1, EP §13.6) | `core/calendar/calendar.test.ts` | ✅ event kind · 🔜 H3a |
-| §3.8.6 | تسجيل حالة المشاركة والإكمال | `trainingParticipants.status` | — | 🔜 H3a |
-| §3.8.7 | رفع الشهادات التدريبية | `trainingParticipants.certificateAttachmentId` | — | 🔜 H3a |
-| §3.8.8 | استخراج تقارير التدريب لكل موظف وقسم | export resources `hr.trainings`, `hr.training_participants` | — | 🔜 H3a / H4 |
+| §3.8 | سجل إلكتروني لتطوير الموظفين ومتابعة احتياجاتهم التدريبية | `/hr/training` (courses, needs, plan), `/hr/training/:id`, `/me/training`, employee tab | `hr-h3a.test.ts` «department managers raise needs, HR plans and runs courses…» | ✅ |
+| §3.8.1 | إعداد خطة تدريب سنوية | `trainingPlans` per year (items by quarter with estimated cost and linked needs), draft → submitted → approved by `hr.training.planApproverRole` (Q12: HR manager; never the submitter) → closed | same | ✅ |
+| §3.8.2 | تحديد الاحتياجات التدريبية لكل قسم | `trainingNeeds` raised by department managers (`hr.training.needsSubmitters`) or HR; HR accepts / plans / rejects; a plan item or course marks them planned / done | same | ✅ |
+| §3.8.3 | ربط التدريب بنتائج تقييم الأداء | `trainingNeeds.source = appraisal` + `appraisalId` | seed (`seedH3a.ts` need 2) | ✅ |
+| §3.8.4 | تسجيل اسم الدورة والجهة المقدمة | `trainings` `TRN-YYYY-#####` with `providerName` or `providerPartyId`, kind داخلي / خارجي / عن بُعد | same | ✅ |
+| §3.8.5 | تحديد تاريخ بداية ونهاية الدورة | `trainings.startAt / endAt`; a calendar event of type `training` is created with the course and gains each nominated participant; the daily job reminds participants the day before | same (event exists, participants added) | ✅ |
+| §3.8.6 | تسجيل حالة المشاركة والإكمال | `trainingParticipants.status` مرشَّح / مسجَّل / حضر / أكمل / لم يُكمل / انسحب with history; nomination creates a task in «مهامي» and a notification; completion closes the task | same | ✅ |
+| §3.8.7 | رفع الشهادات التدريبية | the employee uploads their own certificate (`PATCH /participants/:id` with the attachment, owned by the employee file); HR records the result | same | ✅ |
+| §3.8.8 | استخراج تقارير التدريب لكل موظف وقسم | export resources `hr.trainings` and `hr.training_participants` (department managers export their department) | same | ✅ |
 
 ## §3.9 إدارة العقود والوثائق والتنبيهات
 
@@ -287,9 +289,9 @@ Built in **H2** (2026-11-24, branch `hr-h2`): `apps/api/src/modules/hr/attendanc
 | §5 رابعاً | الطلبات المعتمدة | `requestsByState.approved` = decided approved in the period (`decision.at`, survives archiving) → `/hr/requests?view=all&outcome=approved&from&to` | same | ✅ |
 | §5 رابعاً | الطلبات المرفوضة | `requestsByState.rejected` → `?outcome=rejected` | same | ✅ |
 | §5 رابعاً | الطلبات التي تحتاج إلى استكمال | `requestsByState.needsCompletion` = in «يحتاج استكمال» now → `?state=needs_completion` | same | ✅ |
-| §5 خامساً | نسبة اكتمال تقييمات الموظفين | performance card | — | 🔜 H3a / H4 |
-| §5 خامساً | عدد الموظفين الذين لديهم أهداف وظيفية | performance card | — | 🔜 H3a / H4 |
-| §5 خامساً | الدورات التدريبية المنفذة | performance card | — | 🔜 H3a / H4 |
+| §5 خامساً | نسبة اكتمال تقييمات الموظفين | `performance.appraisalCompletionBp` of the open cycles (approved + acknowledged ÷ total) → `/hr/performance` | `hr-h3a.test.ts` (dashboard 2 of 10 = 20 %) | ✅ |
+| §5 خامساً | عدد الموظفين الذين لديهم أهداف وظيفية | `performance.employeesWithGoals` (active or achieved goals) | same | ✅ |
+| §5 خامساً | الدورات التدريبية المنفذة | `performance.trainingsCompleted` in the dashboard period → `/hr/training` | same | ✅ |
 | §5 خامساً | الترقيات والتغييرات الوظيفية | `recentChanges` (transfer / promotion, last 30 days) | ✓ | ✅ |
 | §5 | الانتقال من المؤشر الإجمالي إلى التفاصيل، مثل عرض الموظفين المتأخرين أو الطلبات المعلقة أو العقود المنتهية | every KPI tile and every bar links to a filtered list (department / branch / nationality / employment type / status / request state and period / expiring kind); the late employees open `/hr/attendance?status=late` for the period (H2) | `golive-h.test.ts` H5; `hr-h1.test.ts`; `hr-h2.test.ts` (`/days?status=late`) | ✅ |
 
@@ -343,8 +345,8 @@ Built in **H2** (2026-11-24, branch `hr-h2`): `apps/api/src/modules/hr/attendanc
 | 5 | واجهة الحضور والانصراف | `/me/attendance` (phone-first), `/manager/attendance`, `/hr/attendance`, `/hr/shifts`, `/hr/leave` | `/hr/attendance/*`, `/hr/shifts/*`, `/hr/leave/*` | `hr-h2.test.ts` (10 tests); web hygiene and label-parity tests | ✅ |
 | 6 | واجهة طلبات الموظفين والخدمات الذاتية | `/me/requests`, `/manager/requests`, `/hr/requests`, detail page; eleven types since H2 | `/hr/requests/*` | `requests.test.ts`; `hr-h1.test.ts` (drafts, archive); `hr-h2.test.ts` | ✅ |
 | 7 | واجهة العقود والوثائق | employee tabs العقود / الوثائق, `/hr/expiring` | `/hr/employees/:id/contracts*`, `/documents` | `hr.test.ts`, `golive-h.test.ts` H5; `hr-h1.test.ts` (`hr.documents_expiring`) | ✅ |
-| 8 | واجهة الرواتب والمزايا | `/hr/payroll`, `/finance/payroll`, `/me/payslips`; today: salary section on the file | `/hr/payroll/*` | — | ✅ salary master · 🔜 H3a |
-| 9 | واجهة تقييم الأداء والتدريب | `/hr/performance`, `/manager/appraisals`, `/me/performance`, `/hr/training` | `/hr/performance/*`, `/hr/training/*` | — | 🔜 H3a |
+| 8 | واجهة الرواتب والمزايا | `/hr/payroll`, `/hr/payroll/:id`, `/finance/payroll` (thin stage), `/me/payslips` (phone-first), employee tab «الرواتب» | `/hr/payroll/*`, `/hr/payslips/*`, `/finance/payroll/*` | `hr-h3a.test.ts` | ✅ |
+| 9 | واجهة تقييم الأداء والتدريب | `/hr/performance` (cycles, appraisals, goals, plans, template), `/hr/performance/appraisals/:id`, `/hr/performance/plans/:id`, `/manager/appraisals`, `/me/performance`, `/hr/discipline`, `/hr/training`, `/hr/training/:id`, `/me/training`, employee tabs | `/hr/performance/*`, `/hr/discipline/*`, `/hr/training/*` | `hr-h3a.test.ts` | ✅ |
 | 10 | واجهة إنهاء الخدمة | `/hr/offboarding/*`, `/it/offboarding` | `/hr/offboarding/*` | — | 🔜 H3b |
 | 11 | لوحة تحكم الموارد البشرية | `/hr/dashboard` (headcount, expiries, requests, attendance since H2) | `/hr/dashboard/hr`, `/hr/dashboard/expiring` | `dashboard.test.ts`, `hr-h1.test.ts`, `hr-h2.test.ts` | ✅ (performance cards H3a / H4) |
 | 12 | نظام التقارير والتصدير إلى Excel | `/hr/export` | `/export/resources`, `/export` | `core/export/export.test.ts`, `dashboard.test.ts` | ✅ (scope grows per slice) |

@@ -153,4 +153,10 @@ export const TEAM_LEAD_GRANTS: PermissionGrant[] = [
   { resource: 'hr.attendance.reports', actions: ['view'], scope: 'team' },
   { resource: 'hr.leave', actions: ['view'], scope: 'team' },
   { resource: 'hr.shifts', actions: ['view'], scope: 'team' },
+  // H3a [HR §3.7, §3.8, HR_PLAN §6]: a direct manager sets goals, scores appraisals, follows plans, drafts actions, nominates to courses.
+  { resource: 'hr.goals', actions: ['view', 'create', 'edit'], scope: 'team' },
+  { resource: 'hr.appraisals', actions: ['view', 'edit'], scope: 'team' },
+  { resource: 'hr.improvement_plans', actions: ['view', 'create', 'edit'], scope: 'team' },
+  { resource: 'hr.discipline', actions: ['view', 'create'], scope: 'team' },
+  { resource: 'hr.training', actions: ['view'], scope: 'team' },
 ];

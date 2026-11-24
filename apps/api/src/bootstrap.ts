@@ -11,7 +11,10 @@ import { runEventReminders } from './core/calendar/jobs';
 import { runDocumentExpiryAlerts } from './core/documents/service';
 import { registerExportResource } from './core/export/service';
 import { User } from './core/auth/model';
-import { registerHrModule } from './modules/hr';
+import { HR_FINANCE_GRANTS, registerHrModule } from './modules/hr';
+import { HR_WORKFLOWS } from './modules/hr/workflows';
+import { registerKpiDefinitions } from './core/kpi/registry';
+import { SALES_KPI_AR, SALES_KPI_CODES } from '@eayni/shared';
 import { registerTicketsModule } from './modules/tickets';
 import { registerNewsModule } from './modules/news';
 import { backfillIdentityHashes } from './modules/hr/service';
@@ -48,6 +51,14 @@ export function registerModules(): void {
   registerCrmModule();
   registerSalesModule();
   registerFinanceModule();
+  // KPI registry (CLAUDE.md "KPI framework"): the codes an HR goal may point at [HR §3.7 «ربط الأهداف بمؤشرات أداء القسم»].
+  registerKpiDefinitions([
+    ...SALES_KPI_CODES.map((code) => ({ code, nameAr: SALES_KPI_AR[code], unit: code === 'sales.revenue' ? ('halalas' as const) : code === 'sales.tons_sold' ? ('kg' as const) : code === 'sales.avg_collection_days' ? ('days' as const) : ('bp' as const), direction: code === 'sales.avg_collection_days' ? ('lower' as const) : ('higher' as const), module: 'sales' })),
+    { code: 'hr.attendance_rate', nameAr: 'نسبة الحضور', unit: 'percent', direction: 'higher', module: 'hr' },
+    { code: 'hr.training_completion', nameAr: 'إكمال الدورات التدريبية', unit: 'percent', direction: 'higher', module: 'hr' },
+    { code: 'hr.appraisal_completion', nameAr: 'اكتمال تقييمات الأداء', unit: 'percent', direction: 'higher', module: 'hr' },
+    { code: 'hr.requests_sla', nameAr: 'طلبات الموظفين ضمن المهلة', unit: 'percent', direction: 'higher', module: 'hr' },
+  ]);
 
   registerExportResource({
     resource: 'users',
@@ -77,11 +88,11 @@ export async function ensureBaseline(): Promise<void> {
   // Finance roles gain the invoice register (Finance phase 0) through the same never-seeded-resource rule.
   const coreWithFinance = CORE_ROLES.map((r) =>
     r.code === 'finance_staff' || r.code === 'finance_manager'
-      ? { ...r, grants: [...r.grants, ...FINANCE_INVOICE_GRANTS] }
+      ? { ...r, grants: [...r.grants, ...FINANCE_INVOICE_GRANTS, ...HR_FINANCE_GRANTS(r.code)] }
       : r,
   );
   await ensureCoreRoles([...coreWithFinance, ...SALES_ROLES]);
-  for (const def of [...DEFAULT_WORKFLOWS, ...SALES_WORKFLOWS]) await ensureWorkflow(def);
+  for (const def of [...DEFAULT_WORKFLOWS, ...SALES_WORKFLOWS, ...HR_WORKFLOWS]) await ensureWorkflow(def);
   await ensureDefaultTags('sales', DEFAULT_SALES_TAGS); // [SAL §10.4]
   await backfillIdentityHashes();
 }
