@@ -38,6 +38,10 @@ import {
   FileBarChart,
   FileCode2,
   Percent,
+  Fingerprint,
+  Clock3,
+  CalendarRange,
+  Palmtree,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { usePrefs } from '@/lib/preferences';
@@ -165,6 +169,9 @@ export function AppShell() {
     { to: '/', label: t('nav.dashboard'), icon: Home, show: true },
     { to: '/me/profile', label: t('nav.profile'), icon: UserRound, show: true },
     { to: '/me/requests', label: t('nav.myRequests'), icon: Send, show: can('hr.requests', 'create') },
+    // «الحضور والانصراف» for every employee with a file [HR §3.4 ثالثاً]; the team view for direct managers.
+    { to: '/me/attendance', label: t('nav.attendance'), icon: Fingerprint, show: can('hr.attendance', 'create') },
+    { to: '/manager/attendance', label: t('nav.teamAttendance'), icon: Clock3, show: !!team.data?.items.length },
     { to: '/me/tickets', label: t('nav.myTickets'), icon: Ticket, show: can('tickets', 'view') },
     { to: '/manager/requests', label: t('nav.teamRequests'), icon: Inbox, show: !!inbox.data?.total },
     { to: '/manager/team', label: t('nav.team'), icon: Users, show: !!team.data?.items.length },
@@ -244,6 +251,25 @@ export function AppShell() {
       label: t('nav.secondments'),
       icon: Briefcase,
       show: can('hr.employees', 'create'),
+    },
+    // H2 [HR §3.4, §3.5.1]: HR's attendance log, the shifts and the leave balances (department managers read-only).
+    {
+      to: '/hr/attendance',
+      label: t('nav.hrAttendance'),
+      icon: Clock3,
+      show: can('hr.attendance', 'view') && (user?.permissions.find((p) => p.resource === 'hr.attendance')?.scope ?? 'own') !== 'own',
+    },
+    {
+      to: '/hr/shifts',
+      label: t('nav.shifts'),
+      icon: CalendarRange,
+      show: can('hr.shifts', 'create'),
+    },
+    {
+      to: '/hr/leave',
+      label: t('nav.leave'),
+      icon: Palmtree,
+      show: can('hr.leave', 'view') && (user?.permissions.find((p) => p.resource === 'hr.leave')?.scope ?? 'own') !== 'own',
     },
     {
       to: '/hr/profile-changes',

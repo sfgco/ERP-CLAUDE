@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Bell,
   Briefcase,
+  Fingerprint,
   Cake,
   CalendarDays,
   ClipboardList,
@@ -148,6 +149,8 @@ export function DashboardPage() {
             ? `${t('hr.basicSalary')}: ${sar(p.basicSalaryHalalas)}${p.pendingChanges.length ? ` · ${t('profile.pendingChange')}` : ''}`
             : '—',
         )}
+        {can('hr.attendance', 'create') &&
+          tile('/me/attendance', Fingerprint, t('dashboard.sections.attendance'), t('dashboard.attendanceHint'))}
         {tile(
           '/me/requests',
           Ticket,

@@ -71,6 +71,8 @@ export const NOTIFICATION_TYPES = [
   'discussion.state_changed',
   'sales.marketing_notice', // §9 فعالية تحتاج دعم التسويق
   'sales.target.changed',
+  // HR H2 [HR §3.4 رابعاً «إشعار الموظف عند نسيان تسجيل الحضور أو الانصراف»]
+  'attendance.missed_punch',
   'generic',
 ] as const;
 export type NotificationType = (typeof NOTIFICATION_TYPES)[number];
@@ -140,5 +142,6 @@ export const NOTIFICATION_TITLES_AR: Record<NotificationType, string> = {
   'discussion.state_changed': 'تحديث حالة نقاش بين الأقسام',
   'sales.marketing_notice': 'فعالية تحتاج دعم قسم التسويق',
   'sales.target.changed': 'تحديث مستهدفك الشهري',
+  'attendance.missed_punch': 'لم تسجّل الحضور أو الانصراف',
   generic: 'إشعار',
 };

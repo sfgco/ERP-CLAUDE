@@ -31,11 +31,12 @@ import { FileUploader, downloadAttachment } from '@/shared/files/FileUploader';
 import { sar, useHrLookups, type EmployeeFull } from './_data';
 import { riyadhToday } from '@/lib/dates';
 import { typeLabel, useReportTypes, useReports } from '../reports/_data';
+import { EmployeeAttendanceTab, EmployeeLeaveTab } from './EmployeeAttendanceTabs';
 
 const CUSTODY_CONDITIONS = ['good', 'damaged', 'lost'] as const;
 import { statusTone } from './EmployeesPage';
 
-type Tab = 'data' | 'job' | 'contracts' | 'documents' | 'custody' | 'reports';
+type Tab = 'data' | 'job' | 'contracts' | 'documents' | 'custody' | 'reports' | 'attendance' | 'leave';
 
 /** Employee file [HR §3.3]: data, job + history [HR §3.1], contracts [HR §3.9], documents, custody. */
 export function EmployeePage() {
@@ -60,6 +61,9 @@ export function EmployeePage() {
     { key: 'documents', label: t('hr.tabs.documents') },
     { key: 'custody', label: t('hr.tabs.custody') },
     { key: 'reports', label: t('hr.tabs.reports') },
+    // H2 [HR §3.4, §3.5.1, §9.3]
+    ...(can('hr.attendance', 'view') ? [{ key: 'attendance' as Tab, label: t('hr.tabs.attendance') }] : []),
+    ...(can('hr.leave', 'view') ? [{ key: 'leave' as Tab, label: t('hr.tabs.leave') }] : []),
   ];
   return (
     <>
@@ -99,6 +103,8 @@ export function EmployeePage() {
       {tab === 'documents' && <DocumentsTab e={e} />}
       {tab === 'custody' && <CustodyTab e={e} />}
       {tab === 'reports' && <ReportsTab e={e} />}
+      {tab === 'attendance' && <EmployeeAttendanceTab employeeId={e._id} />}
+      {tab === 'leave' && <EmployeeLeaveTab employeeId={e._id} />}
     </>
   );
 }

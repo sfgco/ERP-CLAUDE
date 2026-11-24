@@ -66,6 +66,11 @@ import { SalesTasksPage } from './pages/sales/management/SalesTasksPage';
 import { SalesReportsPage } from './pages/sales/management/SalesReportsPage';
 import { DiscountMatrixPage } from './pages/sales/pricing/DiscountMatrixPage';
 import { DiscussionPage, DiscussionsPage } from './pages/discussions/DiscussionsPage';
+import { AttendancePage } from './pages/me/AttendancePage';
+import { TeamAttendancePage } from './pages/manager/TeamAttendancePage';
+import { HrAttendancePage } from './pages/hr/AttendancePage';
+import { ShiftsPage } from './pages/hr/ShiftsPage';
+import { LeaveBalancesPage } from './pages/hr/LeaveBalancesPage';
 
 export const router = createBrowserRouter([
   {
@@ -97,6 +102,9 @@ export const router = createBrowserRouter([
               { path: '/hr/requests/:id', element: <RequestDetailPage /> },
               { path: '/manager/requests', element: <RequestsListPage view="inbox" /> },
               { path: '/manager/team', element: <TeamPage /> },
+              // H2 attendance [HR §3.4]: the employee's screen, the manager's team view; HR screens below.
+              { path: '/me/attendance', element: <AttendancePage /> },
+              { path: '/manager/attendance', element: <TeamAttendancePage /> },
               { path: '/me/tickets', element: <TicketsListPage view="mine" /> },
               { path: '/tickets', element: <TicketsListPage view="assigned" /> },
               { path: '/tickets/:id', element: <TicketDetailPage /> },
@@ -159,6 +167,18 @@ export const router = createBrowserRouter([
                   { path: '/hr/employees/:id', element: <EmployeePage /> },
                   { path: '/hr/secondments', element: <SecondmentsPage /> },
                 ],
+              },
+              {
+                element: <RequirePermission resource="hr.attendance" action="view" />,
+                children: [{ path: '/hr/attendance', element: <HrAttendancePage /> }],
+              },
+              {
+                element: <RequirePermission resource="hr.shifts" action="view" />,
+                children: [{ path: '/hr/shifts', element: <ShiftsPage /> }],
+              },
+              {
+                element: <RequirePermission resource="hr.leave" action="view" />,
+                children: [{ path: '/hr/leave', element: <LeaveBalancesPage /> }],
               },
               {
                 element: <RequirePermission resource="crm.customers" action="view" />,

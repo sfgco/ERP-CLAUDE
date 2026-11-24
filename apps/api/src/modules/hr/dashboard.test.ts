@@ -106,7 +106,8 @@ describe('slice 6 dashboards and export [EP §16, HR §4–5]', () => {
     );
     expect(d.body.headcount.byDepartment[0]).toMatchObject({ key: 'التشغيل', count: 3 });
     expect(d.body.expiring.identities.d30).toBe(3);
-    expect(d.body).not.toHaveProperty('attendance');
+    // H2: the attendance cards exist now [HR §5 ثانياً] (phase 1 hid them until the module arrived).
+    expect(d.body.attendance).toMatchObject({ absent: 0, late: 0, missingPunches: 0, onLeaveToday: 0 });
     expect((await request(app()).get('/api/v1/hr/dashboard/hr').set(auth(mgr.token))).status).toBe(403);
     // Export resources: HR manager sees sensitive employee fields; the department manager does not see them, and not even the resource unless granted export.
     const resHr = await request(app()).get('/api/v1/export/resources').set(auth(hr));

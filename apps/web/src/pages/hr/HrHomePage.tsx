@@ -12,6 +12,7 @@ interface Dash {
   requestsByState: { pending: number; needsCompletion: number };
   secondmentsWithoutReport: number;
   probationEnding30: number;
+  attendance: { missingPunches: number; late: number; absent: number; onLeaveToday: number };
 }
 
 /**
@@ -70,6 +71,15 @@ export function HrHomePage() {
           value={d.secondmentsWithoutReport}
           tone={d.secondmentsWithoutReport ? 'red' : 'green'}
         />
+        {can('hr.attendance', 'view') && (
+          <Kpi
+            to="/hr/attendance?exceptionsOnly=1"
+            label={t('hr.home.attendanceExceptions')}
+            value={d.attendance.late + d.attendance.absent + d.attendance.missingPunches}
+            tone={d.attendance.late + d.attendance.absent + d.attendance.missingPunches ? 'amber' : 'green'}
+            hint={t('hr.home.attendanceExceptionsHint')}
+          />
+        )}
       </div>
       <h2 className="mb-2 mt-4 text-sm font-semibold text-slate-700">{t('hr.home.alerts')}</h2>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -99,6 +109,16 @@ export function HrHomePage() {
           <Link to="/hr/dashboard" className="rounded-lg border border-slate-200 px-3 py-1.5 hover:bg-slate-50">
             {t('hr.home.dashboard')}
           </Link>
+          {can('hr.shifts', 'create') && (
+            <Link to="/hr/shifts" className="rounded-lg border border-slate-200 px-3 py-1.5 hover:bg-slate-50">
+              {t('hr.home.shifts')}
+            </Link>
+          )}
+          {can('hr.leave', 'create') && (
+            <Link to="/hr/leave" className="rounded-lg border border-slate-200 px-3 py-1.5 hover:bg-slate-50">
+              {t('hr.home.leave')}
+            </Link>
+          )}
           {can('hr.employees', 'export') && (
             <Link to="/hr/export" className="rounded-lg border border-slate-200 px-3 py-1.5 hover:bg-slate-50">
               {t('hr.home.export')}

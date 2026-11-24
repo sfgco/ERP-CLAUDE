@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react';
 import type { FieldErrors, UseFormReturn } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
-import { LEAVE_TYPES, type HrRequestType } from '@eayni/shared';
+import { CORRECTION_KINDS, EXCEPTION_SCOPES, LEAVE_TYPES, LEAVE_TYPES_WITH_EVENT, type HrRequestType, type LeaveType } from '@eayni/shared';
+import { useSites } from '@/lib/lookups';
 import { Alert, Field, Input, Select, Textarea } from '@/shared/ui';
 
 /** Flat form values for every request type; `detailsFromForm` / `formFromDetails` map to the API shape. */
@@ -17,6 +18,7 @@ export function detailsFromForm(type: HrRequestType, v: RequestFormValues): Reco
         startDate: s('startDate'),
         endDate: s('endDate'),
         reason: s('reason'),
+        eventDate: s('eventDate') || undefined,
       };
     case 'permission':
       return { date: s('date'), startTime: s('startTime'), endTime: s('endTime'), reason: s('reason') };
@@ -46,6 +48,25 @@ export function detailsFromForm(type: HrRequestType, v: RequestFormValues): Reco
       };
     case 'official_letter':
       return { letterType: s('letterType'), addressedTo: s('addressedTo'), purpose: s('purpose') };
+    // H2 [HR §3.4 ثالثاً، ثانياً 6; Q16]
+    case 'attendance_correction':
+      return {
+        day: s('day'),
+        kind: s('kind') || 'missing_out',
+        requestedTime: s('requestedTime'),
+        punchId: s('punchId') || undefined,
+        reason: s('reason'),
+      };
+    case 'geofence_exception':
+      return { from: s('from'), to: s('to'), scope: s('scope') || 'any_location', siteId: s('siteId') || undefined, reason: s('reason') };
+    case 'overtime':
+      return {
+        day: s('day'),
+        startTime: s('startTime'),
+        endTime: s('endTime'),
+        reason: s('reason'),
+        compensation: s('compensation') || undefined,
+      };
   }
 }
 
@@ -61,6 +82,7 @@ export function formFromDetails(type: HrRequestType, d: Record<string, unknown>)
         startDate: date('startDate'),
         endDate: date('endDate'),
         reason: str('reason'),
+        eventDate: date('eventDate'),
       });
       break;
     case 'permission':
@@ -109,6 +131,15 @@ export function formFromDetails(type: HrRequestType, d: Record<string, unknown>)
         purpose: str('purpose'),
       });
       break;
+    case 'attendance_correction':
+      Object.assign(out, { day: str('day'), kind: str('kind'), requestedTime: str('requestedTime'), punchId: str('punchId'), reason: str('reason') });
+      break;
+    case 'geofence_exception':
+      Object.assign(out, { from: str('from'), to: str('to'), scope: str('scope'), siteId: str('siteId'), reason: str('reason') });
+      break;
+    case 'overtime':
+      Object.assign(out, { day: str('day'), startTime: str('startTime'), endTime: str('endTime'), reason: str('reason'), compensation: str('compensation') });
+      break;
   }
   return out;
 }
@@ -129,8 +160,12 @@ export function RequestFields({
   advanceLimitUnset?: boolean;
 }) {
   const { t } = useTranslation();
+  const sites = useSites();
   const required = t('common.requiredField');
   const errors = form.formState.errors;
+  const leaveType = form.watch('leaveType') as LeaveType | undefined;
+  const kind = form.watch('kind');
+  const scope = form.watch('scope');
   const text = (name: string, label: string, req = true, props: Record<string, unknown> = {}): ReactNode => (
     <Field label={label} required={req} error={msg(errors, name) ?? (errors[name] ? required : undefined)}>
       <Input {...props} {...form.register(name, { required: req ? required : false })} />
@@ -164,6 +199,76 @@ export function RequestFields({
             {text('startDate', t('requests.fields.startDate'), true, { type: 'date', dir: 'ltr' })}
             {text('endDate', t('requests.fields.endDate'), true, { type: 'date', dir: 'ltr' })}
           </div>
+          {leaveType && LEAVE_TYPES_WITH_EVENT.includes(leaveType) && text('eventDate', t('requests.fields.eventDate'), true, { type: 'date', dir: 'ltr' })}
+          {reason()}
+        </>
+      );
+    case 'attendance_correction':
+      return (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            {text('day', t('requests.fields.day'), true, { type: 'date', dir: 'ltr' })}
+            <Field label={t('requests.fields.kind')}>
+              <Select {...form.register('kind')}>
+                {CORRECTION_KINDS.map((x) => (
+                  <option key={x} value={x}>
+                    {t(`requests.correctionKinds.${x}`)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          {text('requestedTime', t('requests.fields.requestedTime'), true, { type: 'time', dir: 'ltr' })}
+          {kind === 'wrong_time' && text('punchId', t('requests.fields.punchId'), true, { dir: 'ltr' })}
+          {reason()}
+        </>
+      );
+    case 'geofence_exception':
+      return (
+        <>
+          <div className="grid grid-cols-2 gap-3">
+            {text('from', t('requests.fields.from'), true, { type: 'date', dir: 'ltr' })}
+            {text('to', t('requests.fields.to'), true, { type: 'date', dir: 'ltr' })}
+          </div>
+          <Field label={t('requests.fields.scope')}>
+            <Select {...form.register('scope')}>
+              {EXCEPTION_SCOPES.map((x) => (
+                <option key={x} value={x}>
+                  {t(`requests.exceptionScopes.${x}`)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {scope === 'site' && (
+            <Field label={t('requests.fields.siteId')} required>
+              <Select {...form.register('siteId', { required })}>
+                <option value="">—</option>
+                {sites.data?.items.map((s) => (
+                  <option key={s._id} value={s._id}>
+                    {s.nameAr}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          )}
+          {reason()}
+        </>
+      );
+    case 'overtime':
+      return (
+        <>
+          {text('day', t('requests.fields.day'), true, { type: 'date', dir: 'ltr' })}
+          <div className="grid grid-cols-2 gap-3">
+            {text('startTime', t('requests.fields.startTime'), true, { type: 'time', dir: 'ltr' })}
+            {text('endTime', t('requests.fields.endTime'), true, { type: 'time', dir: 'ltr' })}
+          </div>
+          <Field label={t('requests.fields.compensation')} hint={t('requests.compensationHint')}>
+            <Select {...form.register('compensation')}>
+              <option value="">{t('requests.compensationPolicy')}</option>
+              <option value="pay">{t('requests.compensations.pay')}</option>
+              <option value="leave">{t('requests.compensations.leave')}</option>
+            </Select>
+          </Field>
           {reason()}
         </>
       );

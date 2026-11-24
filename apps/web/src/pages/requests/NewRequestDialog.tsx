@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
@@ -38,6 +38,10 @@ export function NewRequestDialog({
     enabled: open,
   });
   const [type, setType] = useState<HrRequestType>(initialType ?? 'leave');
+  // The attendance screen opens the dialog with a chosen type (correction / exception / overtime).
+  useEffect(() => {
+    if (open && initialType) setType(initialType);
+  }, [open, initialType]);
   const [attachments, setAttachments] = useState<{ attachmentId: string; fileName: string }[]>([]);
   const [error, setError] = useState<string>();
   const form = useForm<RequestFormValues>({
@@ -141,7 +145,11 @@ export function NewRequestDialog({
         </Field>
         {info && (
           <p className="text-xs text-slate-500">
-            {info.route.viaManager ? t('requests.routeViaManager') : t('requests.routeDirectHr')}
+            {info.route.finalApprover === 'manager'
+              ? t('requests.routeManagerFinal')
+              : info.route.viaManager
+                ? t('requests.routeViaManager')
+                : t('requests.routeDirectHr')}
             {info.route.finalApprover === 'hr_then_finance' && ` · ${t('requests.routeThenFinance')}`}
           </p>
         )}

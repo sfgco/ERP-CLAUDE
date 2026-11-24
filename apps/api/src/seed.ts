@@ -10,6 +10,7 @@ import { Holiday } from './core/dates/model';
 import { startDevMongo } from './devMongo';
 import { seedHr } from './seedHr';
 import { seedRequests } from './seedRequests';
+import { seedAttendance } from './seedAttendance';
 import { seedTasks } from './seedTasks';
 import { seedTickets } from './seedTickets';
 import { seedNews } from './seedNews';
@@ -106,6 +107,8 @@ export async function seed(): Promise<{
   }
   const samplePassword = process.env.SEED_SAMPLE_PASSWORD ?? 'Sample12345!';
   const hr = await seedHr(samplePassword);
+  // Shifts, sites, opening leave balances and punches come before the requests so the leave checks see a balance (H2).
+  const attendance = await seedAttendance();
   const requests = await seedRequests();
   const tasks = await seedTasks(samplePassword);
   const tickets = await seedTickets();
@@ -113,7 +116,7 @@ export async function seed(): Promise<{
   const reports = await seedEmployeeReports();
   const salesData = await seedSales();
   logger.info(
-    { requests, tasks, tickets, news, reports, salesData },
+    { attendance, requests, tasks, tickets, news, reports, salesData },
     'sample HR requests, tasks, tickets, news, reports and sales data',
   );
   return { adminEmail, adminPassword, sampleEmployees: hr.created, sampleLogins: hr.logins, samplePassword };

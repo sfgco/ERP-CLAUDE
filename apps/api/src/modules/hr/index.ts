@@ -28,6 +28,9 @@ import { registerPeopleSearch } from '../../core/records/resolvers';
 import { registerCalendarSource } from '../../core/calendar/sources';
 import { arabicSearchRegex } from '@eayni/shared';
 import { ON_DUTY_STATUSES } from './service';
+import { runAttendanceCompute } from './attendance.service';
+import { runLeaveAccrual } from './leave.service';
+import { registerAttendanceExports } from './attendance.exports';
 import {
   runAccountDeactivation,
   runBirthdayGreetings,
@@ -234,6 +237,10 @@ export function registerHrModule(): void {
   registerJob('hr.accounts.deactivate', (now) => runAccountDeactivation(now), 'frequent');
   registerJob('hr.birthdays', (now) => runBirthdayGreetings(now));
   registerJob('hr.secondments.reminders', (now) => runSecondmentReportReminders(now));
+  // H2 [HR §3.4 رابعاً, §3.5.1]: the computed day and the missed-punch reminders every 5 minutes; leave accrual daily.
+  registerJob('hr.attendance.compute', (now) => runAttendanceCompute(now), 'frequent');
+  registerJob('hr.leave.accrual', (now) => runLeaveAccrual(now));
+  registerAttendanceExports();
 
   // Field-picker export [HR §4]; sensitive columns need field-level permission.
   registerExportResource({

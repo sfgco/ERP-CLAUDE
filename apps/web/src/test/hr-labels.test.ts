@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ATTENDANCE_DAY_STATUS_AR,
+  CORRECTION_KIND_AR,
+  EXCEPTION_SCOPE_AR,
+  LEAVE_ENTRY_TYPE_AR,
+  PUNCH_TYPE_AR,
+  SHIFT_KIND_AR,
   CONTRACT_STATUS_AR,
   CONTRACT_TYPE_AR,
   EMPLOYEE_STATUS_AR,
@@ -25,6 +31,13 @@ const pairs: [string, Record<string, string>, Record<string, string>][] = [
   ['requests.types', HR_REQUEST_TYPE_AR, ar.requests.types],
   ['requests.states', HR_REQUEST_STATE_AR, ar.requests.states],
   ['requests.leaveTypes', LEAVE_TYPE_AR, ar.requests.leaveTypes],
+  // H2 [HR §3.4, §3.5.1]
+  ['requests.correctionKinds', CORRECTION_KIND_AR, ar.requests.correctionKinds],
+  ['requests.exceptionScopes', EXCEPTION_SCOPE_AR, ar.requests.exceptionScopes],
+  ['attendance.statuses', ATTENDANCE_DAY_STATUS_AR, ar.attendance.statuses],
+  ['attendance.punchTypes', PUNCH_TYPE_AR, ar.attendance.punchTypes],
+  ['shifts.kinds', SHIFT_KIND_AR, ar.shifts.kinds],
+  ['leave.entryTypes', LEAVE_ENTRY_TYPE_AR, ar.leave.entryTypes],
 ];
 
 describe('HR enum labels: shared package and Arabic locale agree', () => {

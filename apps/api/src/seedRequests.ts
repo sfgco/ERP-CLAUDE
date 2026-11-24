@@ -24,6 +24,8 @@ export async function seedRequests(): Promise<number> {
   const sultan = await byEmail('sultan@eayni.local'); // sales manager
   const sara = await byEmail('sara@eayni.local'); // hr officer
   const d = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
+  const yousef = await byEmail('yousef@eayni.local');
+  const sultanReem = sultan;
 
   // 1. Leave awaiting the manager (omar → khalid)
   await createRequest(
@@ -153,7 +155,52 @@ export async function seedRequests(): Promise<number> {
     { type: 'experience_certificate', details: { purpose: 'التقديم على برنامج تدريبي' }, attachmentIds: [] },
     actorOf(rashed),
   );
-  void sultan;
+  // ---- H2 attendance requests [HR §3.4 ثالثاً، ثانياً 6; DECISIONS §21 Q16] ----
+  // 9. Correction for a missing check-out three days ago (omar → khalid, pending)
+  await createRequest(
+    omar,
+    {
+      type: 'attendance_correction',
+      details: { day: d(-3), kind: 'missing_out', requestedTime: '15:05', reason: 'نسيت تسجيل الانصراف بعد تسليم الحاويات' },
+      attachmentIds: [],
+    },
+    actorOf(omar),
+  );
+  // 10. Geofence exception approved end to end (rashed → khalid → sara): a delivery trip outside the sites
+  let exc = await createRequest(
+    rashed,
+    {
+      type: 'geofence_exception',
+      details: { from: d(1), to: d(3), scope: 'any_location', reason: 'توصيل حاويات إلى عميل في الجبيل' },
+      attachmentIds: [],
+    },
+    actorOf(rashed),
+  );
+  exc = await transition(exc, 'approve', { user: khalid, actor: actorOf(khalid), relations: await relationsFor(khalid, exc) });
+  await transition(exc, 'approve', { user: sara, actor: actorOf(sara), relations: await relationsFor(sara, exc) });
+  // 11. Overtime today approved by the direct manager alone (yousef → khalid; HR not in the route, Q16)
+  const ot = await createRequest(
+    yousef,
+    {
+      type: 'overtime',
+      details: { day: d(0), startTime: '15:00', endTime: '17:00', reason: 'استكمال فرز شحنة متأخرة' },
+      attachmentIds: [],
+    },
+    actorOf(yousef),
+  );
+  await transition(ot, 'approve', { user: khalid, actor: actorOf(khalid), relations: await relationsFor(khalid, ot) });
+  // 12. Sick leave approved for the last three days (reem → sultan → sara): ledger «taken» row, days «في إجازة»
+  let sick = await createRequest(
+    reem,
+    {
+      type: 'leave',
+      details: { leaveType: 'sick', startDate: d(-4), endDate: d(-2), reason: 'إجازة مرضية بتقرير طبي' },
+      attachmentIds: [],
+    },
+    actorOf(reem),
+  );
+  sick = await transition(sick, 'approve', { user: sultanReem, actor: actorOf(sultanReem), relations: await relationsFor(sultanReem, sick) });
+  await transition(sick, 'approve', { user: sara, actor: actorOf(sara), relations: await relationsFor(sara, sick) });
   void SYSTEM_ACTOR;
   void Employee;
   return HrRequest.countDocuments();

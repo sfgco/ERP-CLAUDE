@@ -44,6 +44,7 @@ interface Data {
     byPendingWith: Count[];
     byAge: { d0_2: number; d3_7: number; d8plus: number };
   };
+  attendance: { period: { from: string; to: string }; absent: number; late: number; missingPunches: number; workedMinutes: number; overtimeApprovedMinutes: number; onLeaveToday: number };
   secondmentsWithoutReport: number;
   probationEnding30: number;
   recentChanges: { _id: string; employeeId: string; type: string; at: string; effectiveDate?: string }[];
@@ -167,6 +168,15 @@ export function HrDashboardPage() {
           tone={d.requestsByState.needsCompletion ? 'amber' : 'slate'}
           hint={t('dash.hr.reqNeedsHint')}
         />
+      </div>
+      {/* Attendance cards [HR §5 second group]: absences, lateness, worked hours, missing punches, on leave today */}
+      <h2 className="mt-4 text-sm font-semibold text-slate-700">{t('dash.hr.attendance')}</h2>
+      <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <Kpi to={`/hr/attendance?from=${range.from}&to=${range.to}&status=absent`} label={t('dash.hr.attAbsent')} value={d.attendance.absent} tone={d.attendance.absent ? 'red' : 'slate'} />
+        <Kpi to={`/hr/attendance?from=${range.from}&to=${range.to}&status=late`} label={t('dash.hr.attLate')} value={d.attendance.late} tone={d.attendance.late ? 'amber' : 'slate'} />
+        <Kpi to={`/hr/attendance?from=${range.from}&to=${range.to}`} label={t('dash.hr.attHours')} value={Math.round(d.attendance.workedMinutes / 60)} hint={`${t('attendance.overtimeApproved')}: ${Math.round(d.attendance.overtimeApprovedMinutes / 60)}`} />
+        <Kpi to={`/hr/attendance?from=${range.from}&to=${range.to}&exceptionsOnly=1`} label={t('dash.hr.attMissing')} value={d.attendance.missingPunches} tone={d.attendance.missingPunches ? 'amber' : 'slate'} />
+        <Kpi to="/hr/employees?status=on_leave" label={t('dash.hr.attOnLeave')} value={d.attendance.onLeaveToday} tone="blue" />
       </div>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <Card title={t('dash.hr.byDepartment')}>

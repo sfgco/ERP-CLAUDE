@@ -22,6 +22,36 @@ export async function getSetting<K extends SettingKey>(key: K): Promise<SettingV
   return value;
 }
 
+/**
+ * Value plus whether it is still provisional («مؤقت حتى اعتماد الموارد البشرية», DECISIONS §21): a definition marked
+ * `provisional` stays so until an admin confirms it, whatever value is stored.
+ */
+export async function getSettingMeta<K extends SettingKey>(
+  key: K,
+): Promise<{ value: SettingValue<K>; provisional: boolean; confirmedAt?: Date | null }> {
+  const def = SETTING_DEFINITIONS[key];
+  const doc = await Setting.findOne({ key }).lean();
+  const value = doc && doc.value !== undefined ? (doc.value as SettingValue<K>) : (def.default as SettingValue<K>);
+  return { value, provisional: !!def.provisional && !doc?.confirmedAt, confirmedAt: doc?.confirmedAt ?? null };
+}
+
+/** The admin confirms a provisional setting (keeps the current value); audited. */
+export async function confirmSetting(key: SettingKey, actor: Actor): Promise<void> {
+  const def = SETTING_DEFINITIONS[key];
+  if (!def) throw badRequest(`إعداد غير معروف: ${key}`);
+  const existing = await Setting.findOne({ key }).lean();
+  await Setting.updateOne(
+    { key },
+    {
+      $set: { confirmedAt: new Date(), confirmedBy: actor.userId ?? actor.email },
+      ...(existing ? {} : { $setOnInsert: { value: def.default } }),
+    },
+    { upsert: true },
+  );
+  cache.delete(key);
+  await recordAudit(actor, { action: 'approve', resource: 'settings', resourceId: key, meta: { confirmed: true } });
+}
+
 export async function setSetting<K extends SettingKey>(
   key: K,
   raw: unknown,
@@ -49,20 +79,34 @@ export async function setSetting<K extends SettingKey>(
 }
 
 export async function listSettings(): Promise<
-  { key: string; labelAr: string; group: string; value: unknown; default: unknown; isDefault: boolean }[]
+  {
+    key: string;
+    labelAr: string;
+    descriptionAr?: string;
+    group: string;
+    value: unknown;
+    default: unknown;
+    isDefault: boolean;
+    provisional: boolean;
+    confirmedAt?: Date | null;
+  }[]
 > {
   const stored = await Setting.find().lean();
-  const byKey = new Map(stored.map((s) => [s.key, s.value]));
+  const byKey = new Map(stored.map((s) => [s.key, s]));
   return (Object.keys(SETTING_DEFINITIONS) as SettingKey[]).map((key) => {
     const def = SETTING_DEFINITIONS[key];
-    const has = byKey.has(key);
+    const doc = byKey.get(key);
+    const has = !!doc && doc.value !== undefined;
     return {
       key,
       labelAr: def.labelAr,
+      descriptionAr: def.descriptionAr,
       group: def.group,
-      value: has ? byKey.get(key) : def.default,
+      value: has ? doc!.value : def.default,
       default: def.default,
       isDefault: !has,
+      provisional: !!def.provisional && !doc?.confirmedAt,
+      confirmedAt: doc?.confirmedAt ?? null,
     };
   });
 }

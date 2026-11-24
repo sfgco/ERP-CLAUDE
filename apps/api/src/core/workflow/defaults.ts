@@ -138,7 +138,7 @@ export const TICKET_IT_WORKFLOW: WorkflowDefinitionInput = {
 export const HR_REQUEST_WORKFLOW: WorkflowDefinitionInput = {
   type: 'hr_request',
   nameAr: 'طلب موظف',
-  version: 2, // v2: the final step is decided by the 'approver' relation only (security review A7)
+  version: 3, // v3: `manager_final_approve` for routes whose final approver is the direct manager (overtime, DECISIONS §21 Q16)
   initialState: 'new',
   states: {
     new: { labelAr: 'جديد', category: 'open', owner: 'requester' },
@@ -186,6 +186,13 @@ export const HR_REQUEST_WORKFLOW: WorkflowDefinitionInput = {
       labelAr: 'موافقة المدير',
       from: ['awaiting_manager'],
       to: 'awaiting_hr',
+      allow: ['direct_manager'],
+    },
+    {
+      code: 'manager_final_approve',
+      labelAr: 'موافقة المدير (نهائية)',
+      from: ['awaiting_manager'],
+      to: 'approved',
       allow: ['direct_manager'],
     },
     {

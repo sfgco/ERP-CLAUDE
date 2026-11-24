@@ -11,6 +11,10 @@ export const HR_REQUEST_TYPES = [
   'advance',
   'data_update',
   'official_letter',
+  // H2 [HR §3.4 ثالثاً، ثانياً 6; DECISIONS §21 Q16]: the attendance requests travel on the same HRQ- series.
+  'attendance_correction',
+  'geofence_exception',
+  'overtime',
 ] as const;
 export type HrRequestType = (typeof HR_REQUEST_TYPES)[number];
 export const HR_REQUEST_TYPE_AR: Record<HrRequestType, string> = {
@@ -22,6 +26,9 @@ export const HR_REQUEST_TYPE_AR: Record<HrRequestType, string> = {
   advance: 'طلب سلفة',
   data_update: 'طلب تحديث بيانات',
   official_letter: 'طلب خطاب رسمي',
+  attendance_correction: 'طلب تعديل بصمة أو معالجة تسجيل مفقود',
+  geofence_exception: 'طلب استثناء من النطاق الجغرافي',
+  overtime: 'طلب عمل إضافي',
 };
 
 /** Request states [HR §3.5 "حالات الطلب المقترحة"] — the workflow definition `hr_request` uses these codes. */
@@ -37,19 +44,62 @@ export const HR_REQUEST_STATE_AR: Record<string, string> = {
   closed: 'مغلق',
 };
 
-export const LEAVE_TYPES = ['annual', 'sick', 'emergency', 'unpaid', 'maternity', 'hajj', 'other'] as const;
-export const LEAVE_TYPE_AR: Record<(typeof LEAVE_TYPES)[number], string> = {
+/** Leave types [HR §3.5.1] — the Labor Law list with the 2025 amendments (DECISIONS §21 Q7); «اضطرارية» is the cooperative's own. */
+export const LEAVE_TYPES = [
+  'annual',
+  'sick',
+  'emergency',
+  'unpaid',
+  'maternity',
+  'hajj',
+  'marriage',
+  'newborn',
+  'bereavement',
+  'bereavement_sibling',
+  'iddah',
+  'exam',
+  'overtime_comp',
+  'other',
+] as const;
+export type LeaveType = (typeof LEAVE_TYPES)[number];
+export const LEAVE_TYPE_AR: Record<LeaveType, string> = {
   annual: 'سنوية',
   sick: 'مرضية',
   emergency: 'اضطرارية',
   unpaid: 'بدون راتب',
   maternity: 'وضع',
   hajj: 'حج',
+  marriage: 'زواج',
+  newborn: 'مولود',
+  bereavement: 'وفاة',
+  bereavement_sibling: 'وفاة أخ أو أخت',
+  iddah: 'عدة',
+  exam: 'اختبارات',
+  overtime_comp: 'تعويض عمل إضافي',
   other: 'أخرى',
+};
+/** Leave types whose request needs the date of the event (birth, death, marriage…) for the Q7 validations. */
+export const LEAVE_TYPES_WITH_EVENT: readonly LeaveType[] = ['newborn', 'maternity'];
+
+export const CORRECTION_KINDS = ['missing_in', 'missing_out', 'wrong_time'] as const;
+export type CorrectionKind = (typeof CORRECTION_KINDS)[number];
+export const CORRECTION_KIND_AR: Record<CorrectionKind, string> = {
+  missing_in: 'تسجيل حضور مفقود',
+  missing_out: 'تسجيل انصراف مفقود',
+  wrong_time: 'تعديل وقت بصمة',
+};
+export const EXCEPTION_SCOPES = ['any_location', 'site', 'remote'] as const;
+export type ExceptionScope = (typeof EXCEPTION_SCOPES)[number];
+export const EXCEPTION_SCOPE_AR: Record<ExceptionScope, string> = {
+  any_location: 'من أي موقع',
+  site: 'من موقع محدد',
+  remote: 'عمل عن بُعد',
 };
 
 const dateStr = z.coerce.date();
 const timeStr = z.string().regex(/^\d{2}:\d{2}$/, 'الوقت بصيغة HH:MM');
+const dayStr = riyadhDaySchema;
+const objectId = z.string().regex(/^[a-f\d]{24}$/i, 'معرّف غير صالح');
 
 /** Per-type fields exactly as HR §3.5 lists them. */
 export const HR_REQUEST_DETAIL_SCHEMAS = {
@@ -59,8 +109,14 @@ export const HR_REQUEST_DETAIL_SCHEMAS = {
       startDate: dateStr,
       endDate: dateStr,
       reason: z.string().trim().min(2).max(1000),
+      /** Birth / death / marriage date for the types that are counted from an event (DECISIONS §21 Q7). */
+      eventDate: dateStr.optional(),
     })
-    .refine((d) => d.endDate >= d.startDate, { message: 'تاريخ النهاية قبل البداية', path: ['endDate'] }),
+    .refine((d) => d.endDate >= d.startDate, { message: 'تاريخ النهاية قبل البداية', path: ['endDate'] })
+    .refine((d) => !LEAVE_TYPES_WITH_EVENT.includes(d.leaveType) || !!d.eventDate, {
+      message: 'تاريخ الواقعة مطلوب لهذا النوع من الإجازة',
+      path: ['eventDate'],
+    }),
   permission: z
     .object({
       date: dateStr,
@@ -103,6 +159,43 @@ export const HR_REQUEST_DETAIL_SCHEMAS = {
     addressedTo: z.string().trim().min(2).max(200),
     purpose: z.string().trim().min(2).max(500),
   }),
+  /** «رفع طلب تعديل بصمة أو معالجة تسجيل مفقود» [HR §3.4 ثالثاً]: approval inserts the punch, the original is never edited. */
+  attendance_correction: z
+    .object({
+      day: dayStr,
+      kind: z.enum(CORRECTION_KINDS),
+      /** The time the employee says they actually arrived / left (HH:MM, Riyadh). */
+      requestedTime: timeStr,
+      /** For `wrong_time`: which punch is wrong (its id), so the correction is traceable. */
+      punchId: objectId.optional(),
+      reason: z.string().trim().min(2).max(1000),
+    })
+    .refine((d) => d.kind !== 'wrong_time' || !!d.punchId, {
+      message: 'حدّد البصمة المطلوب تعديلها',
+      path: ['punchId'],
+    }),
+  /** «إلا وفق صلاحية أو استثناء معتمد» [HR §3.4 ثانياً 6]: approval writes an attendanceExceptions row. */
+  geofence_exception: z
+    .object({
+      from: dayStr,
+      to: dayStr,
+      scope: z.enum(EXCEPTION_SCOPES),
+      siteId: objectId.optional(),
+      reason: z.string().trim().min(2).max(1000),
+    })
+    .refine((d) => d.to >= d.from, { message: 'تاريخ النهاية قبل البداية', path: ['to'] })
+    .refine((d) => d.scope !== 'site' || !!d.siteId, { message: 'حدّد الموقع', path: ['siteId'] }),
+  /** «طلب عمل إضافي» (Q16): pre-approval by the direct manager of N minutes beyond the shift on one day. */
+  overtime: z
+    .object({
+      day: dayStr,
+      startTime: timeStr,
+      endTime: timeStr,
+      reason: z.string().trim().min(2).max(1000),
+      /** DECISIONS §21 Q5: the employee's choice when the policy is `employee_choice`. */
+      compensation: z.enum(['pay', 'leave']).optional(),
+    })
+    .refine((d) => d.endTime > d.startTime, { message: 'وقت النهاية قبل البداية', path: ['endTime'] }),
 } as const;
 
 export const createHrRequestSchema = z.object({
@@ -142,11 +235,12 @@ export const listHrRequestsQuerySchema = z.object({
 /** Routing matrix (DECISIONS §5) — stored as the setting `hr.requestRoutes` so HR can change it. */
 export interface HrRequestRoute {
   viaManager: boolean;
-  finalApprover: 'hr' | 'hr_then_finance';
+  /** `manager`: the direct manager's approval is final (overtime, DECISIONS §21 Q16) — HR is not in the route. */
+  finalApprover: 'hr' | 'hr_then_finance' | 'manager';
 }
 export const hrRequestRoutesSchema = z.record(
   z.enum(HR_REQUEST_TYPES),
-  z.object({ viaManager: z.boolean(), finalApprover: z.enum(['hr', 'hr_then_finance']) }),
+  z.object({ viaManager: z.boolean(), finalApprover: z.enum(['hr', 'hr_then_finance', 'manager']) }),
 );
 export const DEFAULT_HR_REQUEST_ROUTES: Record<HrRequestType, HrRequestRoute> = {
   leave: { viaManager: true, finalApprover: 'hr' },
@@ -157,4 +251,8 @@ export const DEFAULT_HR_REQUEST_ROUTES: Record<HrRequestType, HrRequestRoute> = 
   official_letter: { viaManager: false, finalApprover: 'hr' },
   data_update: { viaManager: false, finalApprover: 'hr' },
   advance: { viaManager: true, finalApprover: 'hr_then_finance' },
+  // H2 defaults (HR_PLAN §4.1–4.2, §11 Q3 / Q6 / Q16 — accepted 2026-11-24)
+  attendance_correction: { viaManager: true, finalApprover: 'hr' },
+  geofence_exception: { viaManager: true, finalApprover: 'hr' },
+  overtime: { viaManager: true, finalApprover: 'manager' },
 };

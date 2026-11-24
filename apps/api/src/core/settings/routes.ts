@@ -6,7 +6,7 @@ import { validate } from '../http/validate';
 import { actorFrom, type AuthedRequest } from '../http/context';
 import { requireAuth } from '../auth/middleware';
 import { authorize } from '../rbac/authorize';
-import { listSettings, setSetting } from './service';
+import { confirmSetting, listSettings, setSetting } from './service';
 import { notifySystemAdmins } from '../notifications/alerts';
 
 export const settingsRouter = Router();
@@ -38,5 +38,17 @@ settingsRouter.put(
         excludeUserId: String(req.auth.user._id),
       });
     res.json({ key, value });
+  }),
+);
+
+/** «تأكيد» a provisional default once the HR team decided (DECISIONS §21); the value itself is unchanged. */
+settingsRouter.post(
+  '/:key/confirm',
+  requireAuth(),
+  authorize('settings', 'edit'),
+  validate(z.object({ key: z.enum(SETTING_KEYS as [SettingKey, ...SettingKey[]]) }), 'params'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    await confirmSetting(req.params.key as SettingKey, actorFrom(req));
+    res.json({ key: req.params.key, provisional: false });
   }),
 );

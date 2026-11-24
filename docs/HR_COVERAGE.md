@@ -89,58 +89,60 @@ Status legend: ✅ built · 🔜 planned slice · ⏸ waits for an owner answer 
 
 ## §3.4 إدارة الحضور والانصراف
 
+Built in **H2** (2026-11-24, branch `hr-h2`): `apps/api/src/modules/hr/attendance.{model,service,routes,exports}.ts`, `leave.service.ts`, tests `hr-h2.test.ts`; screens `pages/me/AttendancePage.tsx`, `pages/manager/TeamAttendancePage.tsx`, `pages/hr/{AttendancePage,ShiftsPage,LeaveBalancesPage,EmployeeAttendanceTabs}.tsx`. Values marked provisional carry «مؤقت حتى اعتماد الموارد البشرية» on the screens until an admin confirms the setting (DECISIONS §21).
+
 | § | Bullet | Implementation | Test | Status |
 |---|---|---|---|---|
-| §3.4 | استخدامه من خلال موقع ERP حالياً، مع إمكانية تحويله مستقبلاً إلى تطبيق للهواتف الذكية | `/me/attendance` phone-first; punch API `POST /hr/attendance/punch` designed for a native client | — | 🔜 H2 |
-| §3.4 أولاً 1 | تعريف فترات الدوام المختلفة | `shifts` collection, `/hr/shifts` | — | 🔜 H2 (⏸ Q1 provisional hours) |
-| §3.4 أولاً 2 | تحديد وقت بداية ونهاية كل فترة | `shifts.periods[] {start, end}` | — | 🔜 H2 |
-| §3.4 أولاً 3 | تحديد أيام العمل والإجازات الأسبوعية | `shifts.workDays / weeklyRestDays` (Fri–Sat default) + `holidays` | — | 🔜 H2 |
-| §3.4 أولاً 4 | إسناد الموظفين إلى فترات العمل | `shiftAssignments` | — | 🔜 H2 |
-| §3.4 أولاً 5 | ربط الموظفين بفروعهم ومواقع تشغيلهم | `shiftAssignments.siteIds[] / branchId` (file already holds `branchId / siteId`) | — | 🔜 H2 |
-| §3.4 أولاً 6 | إمكانية تعديل جدول الدوام حسب طبيعة العمل | new assignment row closes the previous (`from / to`) | — | 🔜 H2 |
-| §3.4 أولاً 7 | دعم الموظفين العاملين بنظام الورديات والعمل الميداني | `shifts.kind` rotating / field; several sites per field employee | — | 🔜 H2 |
-| §3.4 ثانياً 1 | تسجيل الوقت والتاريخ تلقائياً عند تنفيذ العملية | `attendancePunches.at` = server time | — | 🔜 H2 |
-| §3.4 ثانياً 2 | التحقق من الموقع الجغرافي للموظف عند التسجيل | `location {lat, lng, accuracyM}` + `distanceM` to the assigned site | — | 🔜 H2 |
-| §3.4 ثانياً 3 | تحديد نطاق جغرافي مسموح للتسجيل حول مقر العمل أو موقع التشغيل (Geofencing) | `sites.geofenceRadiusM` (exists) + `hr.attendance.geofenceDefaultRadiusM` | `core/org/org.test.ts` «stores sites as GeoJSON points with a geofence radius» | ✅ data · 🔜 H2 check (⏸ Q2 real sites) |
-| §3.4 ثانياً 4 | ربط كل موظف بموقع العمل أو الفرع المحدد له | `employees.siteId / branchId` + assignment | `hr.test.ts` | ✅ field · 🔜 H2 use |
+| §3.4 | استخدامه من خلال موقع ERP حالياً، مع إمكانية تحويله مستقبلاً إلى تطبيق للهواتف الذكية | `/me/attendance` phone-first (`pages/me/AttendancePage.tsx`); the same JSON API a native client would call: `POST /hr/attendance/me/punch` {type, location, locationError, idempotencyKey, source web/mobile} with the server stamping the time | `hr-h2.test.ts` «records server time inside the fence…»; «API document» assertion | ✅ |
+| §3.4 أولاً 1 | تعريف فترات الدوام المختلفة | `shifts` (`attendance.model.ts`), `GET/POST/PATCH /hr/shifts`, screen `/hr/shifts`; every change writes a `shiftVersions` row | `hr-h2.test.ts` «shifts are created, versioned on change and assigned with sites…» | ✅ (hours ⏸ Q1 provisional — flag on the setting) |
+| §3.4 أولاً 2 | تحديد وقت بداية ونهاية كل فترة | `shifts.periods[] {start, end, crossesMidnight}` + `ramadanPeriods[]` (applied in the Hijri month 9) | same | ✅ |
+| §3.4 أولاً 3 | تحديد أيام العمل والإجازات الأسبوعية | `shifts.workDays[]` (default Sun–Thu; the rest is the weekly rest) + the `holidays` collection → statuses «إجازة أسبوعية» / «عطلة رسمية» | `hr-h2.test.ts` «derives every status…» (Friday → weekend, holiday) | ✅ |
+| §3.4 أولاً 4 | إسناد الموظفين إلى فترات العمل | `shiftAssignments` (`POST /hr/shifts/assignments`; no assignment = the default shift `hr.attendance.defaultShiftCode`) | same | ✅ |
+| §3.4 أولاً 5 | ربط الموظفين بفروعهم ومواقع تشغيلهم | `shiftAssignments.siteIds[] / branchId`; empty = the site on the file | same | ✅ |
+| §3.4 أولاً 6 | إمكانية تعديل جدول الدوام حسب طبيعة العمل | a new assignment row closes the previous one (`toDay`), the history is the collection; shift edits are versioned; days from the new start are recomputed | same («the assignment history closes the previous row») | ✅ |
+| §3.4 أولاً 7 | دعم الموظفين العاملين بنظام الورديات والعمل الميداني | `shifts.kind` fixed / rotating / field / flexible; periods may cross midnight (a post-midnight punch belongs to the shift's day); several sites per field employee (seed: field staff on two sites) | same; `seed.test.ts` | ✅ |
+| §3.4 ثانياً 1 | تسجيل الوقت والتاريخ تلقائياً عند تنفيذ العملية | `attendancePunches.at` = server time, `day` = the Riyadh day of the shift | `hr-h2.test.ts` «records server time inside the fence…» | ✅ |
+| §3.4 ثانياً 2 | التحقق من الموقع الجغرافي للموظف عند التسجيل | browser fix `{lat, lng, accuracyM}` → `evaluateLocation` (haversine to the nearest allowed site, accuracy ≤ factor × radius) → `distanceM`, `withinGeofence`; pre-check `POST /hr/attendance/me/check` | same («inaccurate fix counts as unavailable») | ✅ |
+| §3.4 ثانياً 3 | تحديد نطاق جغرافي مسموح للتسجيل حول مقر العمل أو موقع التشغيل (Geofencing) | `sites.geofenceRadiusM` or `hr.attendance.geofenceDefaultRadiusM` (150, provisional) | `core/org/org.test.ts`; `hr-h2.test.ts` (inside 23 m accepted, 7 km refused) | ✅ (⏸ Q2 real sites) |
+| §3.4 ثانياً 4 | ربط كل موظف بموقع العمل أو الفرع المحدد له | `employees.siteId / branchId` + `shiftAssignments.siteIds` decide the allowed sites of a punch | `hr.test.ts`; `hr-h2.test.ts` | ✅ |
 | §3.4 ثانياً 5 | إمكانية تحديد مواقع مختلفة حسب الفروع ومواقع التشغيل | `sites` per branch (`/admin/branches`) | `core/org/org.test.ts` | ✅ |
-| §3.4 ثانياً 6 | منع التسجيل خارج النطاق الجغرافي المعتمد، إلا وفق صلاحية أو استثناء معتمد | punch refused outside the fence unless `attendanceExceptions` row (request type `geofence_exception`) | — | 🔜 H2 (⏸ Q3) |
-| §3.4 ثانياً 7 | تسجيل الموقع المرتبط بكل عملية حضور وانصراف | stored on every punch; coordinates visible to HR and the employee only (HR_PLAN §10.10) | — | 🔜 H2 |
-| §3.4 ثانياً 8 | دعم تسجيل الحضور للموظفين العاملين ميدانياً وفق المواقع المخصصة لهم | field assignment with several sites | — | 🔜 H2 |
-| §3.4 ثالثاً | زر تسجيل الحضور | «تسجيل الحضور» on `/me/attendance` | — | 🔜 H2 |
-| §3.4 ثالثاً | زر تسجيل الانصراف | «تسجيل الانصراف» | — | 🔜 H2 |
-| §3.4 ثالثاً | عرض الوقت والتاريخ تلقائياً | live Riyadh clock, Gregorian/Hijri | — | 🔜 H2 |
-| §3.4 ثالثاً | التحقق من الموقع الجغرافي | browser geolocation → distance / inside badge | — | 🔜 H2 |
-| §3.4 ثالثاً | عرض حالة التسجيل | today's state (داخل / خارج / لم يُسجَّل) | — | 🔜 H2 |
-| §3.4 ثالثاً | عرض جميع سجلات الحضور والانصراف السابقة | punch history list | — | 🔜 H2 |
-| §3.4 ثالثاً | عرض ساعات العمل الفعلية | `attendanceDays.workedMinutes` | — | 🔜 H2 |
-| §3.4 ثالثاً | عرض التأخير والغياب | `lateMinutes`, status `late / absent` | — | 🔜 H2 (⏸ Q4) |
-| §3.4 ثالثاً | عرض ساعات العمل الإضافية | `overtimeMinutes / overtimeApprovedMinutes` | — | 🔜 H2 (⏸ Q5) |
-| §3.4 ثالثاً | إمكانية رفع طلب تعديل بصمة أو معالجة تسجيل مفقود | request type `attendance_correction` from the screen | — | 🔜 H2 (⏸ Q6) |
-| §3.4 رابعاً | إشعار الموظف عند نسيان تسجيل الحضور أو الانصراف | job `hr.attendance.missed_punch` (business days only) | — | 🔜 H2 |
-| §3.4 رابعاً | رصد التأخير وفق جدول الدوام المعتمد | `attendanceDays` computation | — | 🔜 H2 (⏸ Q4) |
-| §3.4 رابعاً | رصد الغياب وفق جدول العمل | same | — | 🔜 H2 (⏸ Q4) |
-| §3.4 رابعاً | احتساب ساعات العمل الفعلية تلقائياً | same | — | 🔜 H2 |
-| §3.4 رابعاً | احتساب ساعات التأخير والعمل الإضافي وفق السياسات المعتمدة | settings `hr.attendance.*`, `hr.overtime.*` | — | 🔜 H2 (⏸ Q4, Q5) |
-| §3.4 رابعاً | تسجيل طلبات تعديل البصمة ومتابعة اعتمادها | request type + inbox; approval inserts a punch | — | 🔜 H2 |
-| §3.4 خامساً | سجل الحضور والانصراف | export resource `hr.attendance_log` | — | 🔜 H2 |
-| §3.4 خامساً | سجل التأخير | `hr.lateness_log` | — | 🔜 H2 |
-| §3.4 خامساً | سجل الغياب | `hr.absence_log` | — | 🔜 H2 |
-| §3.4 خامساً | إجمالي ساعات العمل | `hr.hours_overtime` | — | 🔜 H2 |
-| §3.4 خامساً | ساعات العمل الإضافية | same | — | 🔜 H2 |
-| §3.4 خامساً | طلبات تعديل البصمة | `hr.corrections` | — | 🔜 H2 |
-| §3.4 خامساً | تقرير الحضور الشهري لكل موظف | `hr.attendance_monthly_employee` | — | 🔜 H2 |
-| §3.4 خامساً | تقرير إجمالي الحضور لكل قسم أو فرع | `hr.attendance_totals` | — | 🔜 H2 |
-| §3.4 ملاحظة | سياسة واضحة لاستخدام الموقع الجغرافي: نطاق التحقق، أوقات التسجيل، الاستثناءات، الصلاحيات، آلية التعامل مع تعذر تحديد الموقع، مع مراعاة خصوصية الموظفين وعدم تتبع مواقعهم خارج عملية التسجيل | setting `hr.attendance.locationPolicy`; location read only inside the punch call; coordinates restricted | — | 🔜 H2 (⏸ Q3) |
+| §3.4 ثانياً 6 | منع التسجيل خارج النطاق الجغرافي المعتمد، إلا وفق صلاحية أو استثناء معتمد | 400 `outside_geofence` with the distance (refusal audited `hr.attendance.refused`) unless an `attendanceExceptions` row covers the day (approved «طلب استثناء من النطاق الجغرافي», max `hr.attendance.exceptionMaxDays` = 5, or approved remote work); the punch then carries `exceptionId` | same («honours an approved exception»; «too long an exception is refused») | ✅ (Q3 defaults) |
+| §3.4 ثانياً 7 | تسجيل الموقع المرتبط بكل عملية حضور وانصراف | stored on every punch (`location`, `siteId`, `distanceM`, `withinGeofence`, `ip`, `userAgent`); coordinates returned to the employee and HR only, HR views audited as sensitive; managers see inside / outside and the site (HR_PLAN §10.10) | `hr-h2.test.ts` «coordinates are visible to the employee and HR only…» | ✅ |
+| §3.4 ثانياً 8 | دعم تسجيل الحضور للموظفين العاملين ميدانياً وفق المواقع المخصصة لهم | the nearest of the assigned sites is matched; «لا يوجد موقع بإحداثيات» is accepted flagged `no_site` | same (assignment with a site) | ✅ |
+| §3.4 ثالثاً | زر تسجيل الحضور | «تسجيل الحضور» on `/me/attendance` (reads the location on press only) | `hr-h2.test.ts` (`/me/punch` in) | ✅ |
+| §3.4 ثالثاً | زر تسجيل الانصراف | «تسجيل الانصراف»; in / out must alternate (`already_punched`, `no_check_in`) | same | ✅ |
+| §3.4 ثالثاً | عرض الوقت والتاريخ تلقائياً | live Riyadh clock and the full date (Gregorian / Hijri per the toggle) | — (UI) | ✅ |
+| §3.4 ثالثاً | التحقق من الموقع الجغرافي | browser geolocation → `/me/check` → «داخل النطاق: تبعد n م عن …» / «خارج النطاق…» / «تعذر تحديد الموقع» | `hr-h2.test.ts` (verdicts) | ✅ |
+| §3.4 ثالثاً | عرض حالة التسجيل | «حالة اليوم» badge (حاضر / متأخر / لم يُسجَّل الحضور / …) + today's punches | `GET /hr/attendance/me` in `hr-h2.test.ts` | ✅ |
+| §3.4 ثالثاً | عرض جميع سجلات الحضور والانصراف السابقة | «سجل الحضور والانصراف» (this month / last 30 days) from `GET /hr/attendance/me/days` + `/me/punches` | same | ✅ |
+| §3.4 ثالثاً | عرض ساعات العمل الفعلية | `attendanceDays.workedMinutes` (paired in → out), month total card | `hr-h2.test.ts` «derives every status…» (490 min) | ✅ |
+| §3.4 ثالثاً | عرض التأخير والغياب | `lateMinutes` beyond the grace, statuses «متأخر» / «غائب», month cards | same (late 25 min, 08:08 within grace, absent) | ✅ (Q4 defaults) |
+| §3.4 ثالثاً | عرض ساعات العمل الإضافية | `overtimeMinutes` (beyond the end, rounded to 15 min) and `overtimeApprovedMinutes` (only what an approved «طلب عمل إضافي» covers) | same (120 / 0 then 120 / 120) | ✅ (Q5 defaults; payroll line H3a) |
+| §3.4 ثالثاً | إمكانية رفع طلب تعديل بصمة أو معالجة تسجيل مفقود | request type `attendance_correction` {day, kind missing_in / missing_out / wrong_time, requestedTime, punchId, reason} from the screen's button; same HRQ- series, manager → HR | `hr-h2.test.ts` «a correction request inserts the punch on approval…» | ✅ (Q6 defaults) |
+| §3.4 رابعاً | إشعار الموظف عند نسيان تسجيل الحضور أو الانصراف | frequent job `hr.attendance.compute`: notification `attendance.missed_punch` once per day and punch, after `missedCheckInAlertMinutes` / `missedCheckOutAlertMinutes`, scheduled days only | `hr-h2.test.ts` «the frequent job computes the days and reminds the employee once…» | ✅ |
+| §3.4 رابعاً | رصد التأخير وفق جدول الدوام المعتمد | `computeDay`: first check-in vs the shift start (+ grace); an approved permission inside the window excuses the lateness | `hr-h2.test.ts` (permission 08:00–10:00 excuses a 09:50 arrival) | ✅ |
+| §3.4 رابعاً | رصد الغياب وفق جدول العمل | a scheduled day with no check-in by the shift end and no leave / remote / holiday → «غائب» (Q4) | same | ✅ |
+| §3.4 رابعاً | احتساب ساعات العمل الفعلية تلقائياً | in → out pairs; a missing check-out leaves the hours uncounted until a correction (`missingCheckoutPolicy` wait_correction) | same («missing_out, workedMinutes 0»; after the correction 490) | ✅ |
+| §3.4 رابعاً | احتساب ساعات التأخير والعمل الإضافي وفق السياسات المعتمدة | settings `hr.attendance.rules` (grace 10, early-leave grace 10, absent rule, missed-checkout policy, alert offsets), `hr.overtime` (pre-approval, 150 %, rounding 15, cap, compensation pay / leave / employee_choice), per-shift grace | same; `settings.test.ts` | ✅ (values accepted 2026-11-24; Q1/Q2/Q7 marked provisional) |
+| §3.4 رابعاً | تسجيل طلبات تعديل البصمة ومتابعة اعتمادها | the request travels the normal route (manager inbox → HR queue, stage log, notifications); approval inserts a `source: correction` punch (a `wrong_time` punch supersedes the old one, which stays) and recomputes the day; deadline 7 days, 3 per month then flagged | `hr-h2.test.ts` | ✅ |
+| §3.4 خامساً | سجل الحضور والانصراف | export resource `hr.attendance_log` (punches with site, inside / outside, source) | `hr-h2.test.ts` «the eight reports are export resources…» | ✅ |
+| §3.4 خامساً | سجل التأخير | `hr.lateness_log` (days with lateness: expected start, first in, minutes, permission minutes) | same | ✅ |
+| §3.4 خامساً | سجل الغياب | `hr.absence_log` | same | ✅ |
+| §3.4 خامساً | إجمالي ساعات العمل | `hr.hours_overtime` (worked hours per day) | same | ✅ |
+| §3.4 خامساً | ساعات العمل الإضافية | `hr.hours_overtime` (recorded and approved overtime columns) | same | ✅ |
+| §3.4 خامساً | طلبات تعديل البصمة | `hr.corrections` | `hr-h2.test.ts` (3 rows after the correction flow) | ✅ |
+| §3.4 خامساً | تقرير الحضور الشهري لكل موظف | `hr.attendance_monthly_employee` (filters month or from / to, department, branch, employees) | same (row «عمر العنزي» 1 / 1 / 1 / 7.5 h) | ✅ |
+| §3.4 خامساً | تقرير إجمالي الحضور لكل قسم أو فرع | `hr.attendance_totals` (`groupBy` department / branch, attendance rate) | same | ✅ |
+| §3.4 ملاحظة | سياسة واضحة لاستخدام الموقع الجغرافي: نطاق التحقق، أوقات التسجيل، الاستثناءات، الصلاحيات، آلية التعامل مع تعذر تحديد الموقع، مع مراعاة خصوصية الموظفين وعدم تتبع مواقعهم خارج عملية التسجيل | settings `hr.attendance.locationPolicy` {requireLocation, maxAccuracyFactor, onUnavailable refuse / allow_flagged}, geofence radius, exception max days; the browser reads the location only when a button is pressed and the API stores it only on the punch; coordinates visible to HR and the employee; `GET /hr/attendance/policy` shows the policy and the provisional markers | `hr-h2.test.ts` (refuse vs allow_flagged) | ✅ (Q3 defaults) |
 
 ## §3.5 إدارة طلبات الموظفين والخدمات الذاتية
 
 | § | Bullet | Implementation | Test (`modules/hr/requests.test.ts` unless noted) | Status |
 |---|---|---|---|---|
 | §3.5 | واجهة خدمة ذاتية تتيح للموظف تقديم الطلبات ومتابعة حالتها إلكترونياً | «رفع طلب» → `NewRequestDialog` / `_form.tsx`, `POST /hr/requests`, `/me/requests` (view=mine), `/me/requests/:id` | «validates per-type fields and routes leave via the direct manager…» | ✅ |
-| §3.5.1 | طلب إجازة: نوع الإجازة، تاريخ بداية الإجازة، تاريخ نهاية الإجازة، السبب، المرفقات عند الحاجة | `HR_REQUEST_DETAIL_SCHEMAS.leave` {leaveType (`LEAVE_TYPES`), startDate, endDate, reason} + `attachmentIds` | same | ✅ (balance check 🔜 H2, types/entitlements ⏸ Q7) |
+| §3.5.1 | طلب إجازة: نوع الإجازة، تاريخ بداية الإجازة، تاريخ نهاية الإجازة، السبب، المرفقات عند الحاجة | `leave` {leaveType (14 types: the Labor Law list + 2025 amendments, DECISIONS §21 Q7), startDate, endDate, reason, eventDate for مولود / وضع} + `attachmentIds`; H2 checks the **ledger balance** (annual over balance → refused; others flagged; no ledger yet → flagged «الرصيد غير محمّل»), the longest request, the 7-day birth rule, the 6-weeks-after-birth maternity rule, and flags a missing attachment; approval writes the `taken` ledger row and marks the days «في إجازة» | `requests.test.ts`; `hr-h2.test.ts` «opening balances, over-balance refusal…», «approved leave marks the days on_leave and writes the ledger» | ✅ (entitlements of اضطرارية / أخرى ⏸ provisional) |
 | §3.5.2 | طلب استئذان: التاريخ، وقت بداية الاستئذان، وقت نهاية الاستئذان، السبب، المرفقات | `permission` {date, startTime, endTime, reason} | same | ✅ |
-| §3.5.3 | طلب عمل عن بُعد: التاريخ، المدة، السبب، المرفقات | `remote_work` {startDate, days, reason} | same | ✅ (attendance effect 🔜 H2, HR_PLAN §10.5) |
+| §3.5.3 | طلب عمل عن بُعد: التاريخ، المدة، السبب، المرفقات | `remote_work` {startDate, days, reason}; approval writes an `attendanceExceptions` row (scope remote) so the days compute as «عمل عن بُعد» and punches are accepted from anywhere (HR_PLAN §10.5) | `requests.test.ts`; `hr-h2.test.ts` («approved remote work marks them remote») | ✅ |
 | §3.5.4 | طلب تعريف بالراتب: جهة التوجيه، الغرض من الخطاب، نوع التعريف (تفصيلي أو غير تفصيلي)، تحديد الحاجة إلى التصديق من الغرفة التجارية | `salary_certificate` {addressedTo, purpose, detailed, chamberAttestation}; certificate `CRT-YYYY-#####` from template on HR approval | «salary and experience certificates are generated from the employee file on approval…» | ✅ (PDF renderer ⏸ DECISIONS §1.11 — HTML now) |
 | §3.5.5 | طلب شهادة خبرة: تاريخ الطلب، الغرض من الشهادة، إنشاء الشهادة من قالب موحد مع تعبئة البيانات الوظيفية والتواريخ تلقائياً | `experience_certificate` {purpose}; `createdAt` = request date; `certificates.ts` fills name, position, department, hire date, contract type | same | ✅ |
 | §3.5.6 | طلب سلفة: المبلغ المطلوب، سبب الطلب، ملاحظات إضافية؛ يوجّه إلى الموارد البشرية مع تطبيق صلاحيات الاعتماد | `advance` {amountHalalas, reason, notes}; route `hr_then_finance`; flag `advance_limit_unset` until `hr.advanceLimitHalalas`; Finance decides the final step on the same number | «advance: flagged while the limit is unset, HR approval hands off to Finance with the same number, Finance decides»; «A7: only a finance manager or the executive decides the final step» | ✅ (limit ⏸ DECISIONS §1.9; disbursement ⏸ Finance module; instalments 🔜 H3a) |
@@ -161,10 +163,10 @@ Status legend: ✅ built · 🔜 planned slice · ⏸ waits for an owner answer 
 | §3.5 م2 المدير | مراجعة الطلب؛ الموافقة أو الرفض؛ إضافة الملاحظات؛ تحويل الطلب إلى الموارد البشرية في حال الموافقة | transitions `manager_approve` → awaiting_hr, `manager_reject` (reason required), note on every action; inbox `/manager/requests` | «manager approves → HR approves…»; «A6: nobody decides their own request» | ✅ |
 | §3.5 م3 الموارد البشرية | مراجعة البيانات والمستندات؛ التأكد من استيفاء الشروط؛ اعتماد الطلب أو إعادته لاستكمال البيانات؛ تحويله للاعتماد النهائي حسب نوع الطلب والصلاحيات | `hr_approve`, `hr_return` (reason) → needs_completion → resubmit, `hr_forward_final` (advance → Finance), queue `/hr/requests` | same tests; «advance: …» | ✅ |
 | §3.5 م4 الإغلاق | تحديث حالة الطلب؛ إشعار الموظف بالنتيجة؛ حفظ جميع الإجراءات في سجل الطلب؛ أرشفة الطلب إلكترونياً | approved / rejected + notification `request.decided` to the requester; action log + stage log; **archive** = the `close` transition to «مغلق», run by the daily job `hr.requests.autoclose` after `hr.requestAutoCloseBusinessDays` (default 5) business days, through the workflow (stage log, action log `close` by `system`, audit); HR may still close by hand (H1, DECISIONS §21 note) | `requests.test.ts`; `hr-h1.test.ts` «§3.5 المرحلة الرابعة «أرشفة الطلب»: decided requests close automatically…» | ✅ |
-| §3.5 حالات | جديد – قيد المراجعة – بانتظار موافقة المدير – بانتظار الموارد البشرية – بانتظار الاعتماد النهائي – يحتاج استكمال – معتمد – مرفوض – مغلق | workflow `hr_request` v2 (`core/workflow/defaults.ts`), labels verbatim | `core/workflow/workflow.test.ts`; `requests.test.ts` | ✅ |
+| §3.5 حالات | جديد – قيد المراجعة – بانتظار موافقة المدير – بانتظار الموارد البشرية – بانتظار الاعتماد النهائي – يحتاج استكمال – معتمد – مرفوض – مغلق | workflow `hr_request` v3 (`core/workflow/defaults.ts`; v3 adds `manager_final_approve` for routes whose final approver is the direct manager — overtime, Q16), labels verbatim | `core/workflow/workflow.test.ts`; `requests.test.ts`; `hr-h2.test.ts` (overtime approved by the manager alone, absent from the HR queue) | ✅ |
 | §3.5 (SLA) | — stage SLA | `hr.requestStageSlaBusinessDays` (2), job `hr.requests.overdue` | «overdue stages notify the pending party once per stage» | ✅ |
 | §7.5 ↔ §3.5 | حفظ الطلبات كمسودات واستكمالها لاحقاً | «حفظ كمسودة» in `NewRequestDialog` on the core drafts store (`PUT/GET/DELETE /drafts`, formKey `hr_request`); the draft is offered on the next «رفع طلب» and removed on submission (H1) | `hr-h1.test.ts` «§7.5 drafts: a request form can be saved as a draft…» | ✅ |
-| H2 types | طلب تعديل بصمة / طلب استثناء من النطاق الجغرافي / طلب عمل إضافي (Q16) | new `HR_REQUEST_TYPES` entries with detail schemas and routes | — | 🔜 H2 |
+| H2 types | طلب تعديل بصمة أو معالجة تسجيل مفقود / طلب استثناء من النطاق الجغرافي / طلب عمل إضافي (Q16) | `HR_REQUEST_TYPES` + detail schemas (`hrRequests.ts`), routes in `hr.requestRoutes` (manager → HR; overtime: manager final), validations in `attendance.service.validateAttendanceRequest`, effects on approval in `applyApprovedRequest`; form fields in `_form.tsx`, labels verbatim | `hr-h2.test.ts` (all three flows) | ✅ |
 
 ## §3.6 إدارة الرواتب والمزايا
 
@@ -269,14 +271,14 @@ Status legend: ✅ built · 🔜 planned slice · ⏸ waits for an owner answer 
 |---|---|---|---|---|
 | §5 أولاً | إجمالي عدد الموظفين | `headcount.total` → `/hr/employees` | ✓ | ✅ |
 | §5 أولاً | عدد الموظفين على رأس العمل | `headcount.byStatus` (active) → `/hr/employees?status=active` | ✓ | ✅ |
-| §5 أولاً | عدد الموظفين في إجازة | `byStatus` (on_leave) — from the status field; H2 switches to approved leave covering today | ✓ | ✅ (H2 refinement) |
+| §5 أولاً | عدد الموظفين في إجازة | `attendance.onLeaveToday` = approved leave covering today (card «عدد الموظفين في إجازة اليوم»); `byStatus` (on_leave) kept for the status bar | `hr-h2.test.ts` (`onLeaveToday`) | ✅ |
 | §5 أولاً | عدد الموظفين حسب الإدارات والأقسام | `byDepartment` with drill-down `/hr/employees?departmentId=` | ✓ | ✅ |
 | §5 أولاً | عدد الموظفين حسب الفروع | `byBranch` — **no drill-down link** | ✓ | ✅ (see audit) |
 | §5 أولاً | توزيع الموظفين حسب الجنسية ونوع التوظيف | `headcount.byNationality` → `/hr/employees?nationality=`, `headcount.byEmploymentType` → `/hr/employees?employmentType=` (card «بحسب نوع التوظيف», H1); contract type kept as its own card | `hr-h1.test.ts` «§5 رابعاً: the dashboard counts…» (byEmploymentType) | ✅ |
-| §5 ثانياً | عدد حالات الغياب | attendance card | — | 🔜 H2 |
-| §5 ثانياً | عدد حالات التأخير | attendance card | — | 🔜 H2 |
-| §5 ثانياً | إجمالي ساعات العمل | attendance card | — | 🔜 H2 |
-| §5 ثانياً | حالات عدم تسجيل الحضور أو الانصراف | attendance card | — | 🔜 H2 |
+| §5 ثانياً | عدد حالات الغياب | `attendance.absent` over the dashboard period → `/hr/attendance?from&to&status=absent` | `hr-h2.test.ts` «…the dashboard counts the period» | ✅ |
+| §5 ثانياً | عدد حالات التأخير | `attendance.late` → `?status=late` | same | ✅ |
+| §5 ثانياً | إجمالي ساعات العمل | `attendance.workedMinutes` (+ approved overtime) → `/hr/attendance?from&to` | same (960 min) | ✅ |
+| §5 ثانياً | حالات عدم تسجيل الحضور أو الانصراف | `attendance.missingPunches` (final days with a missing in / out) → `?exceptionsOnly=1` | same | ✅ |
 | §5 ثالثاً | العقود التي قاربت على الانتهاء | `expiring.contracts` 30/60/90 → `/hr/expiring?kind=contracts` | ✓; `golive-h.test.ts` H5 | ✅ |
 | §5 ثالثاً | الوثائق والإقامات التي قاربت على الانتهاء | `expiring.identities`, `expiring.documents` → `/hr/expiring?kind=…` | ✓; `golive-g.test.ts` G5 | ✅ |
 | §5 ثالثاً | المستندات التي تحتاج إلى تحديث | `expiring.needsUpdate` = documents and identities already past their expiry (latest version), card «مستندات تحتاج إلى تحديث» → `/hr/expiring?kind=documents&within=30` (expired rows show a negative «المتبقي») (H1) | `hr-h1.test.ts` «§5 رابعاً…» (`needsUpdate`) | ✅ |
@@ -289,7 +291,7 @@ Status legend: ✅ built · 🔜 planned slice · ⏸ waits for an owner answer 
 | §5 خامساً | عدد الموظفين الذين لديهم أهداف وظيفية | performance card | — | 🔜 H3a / H4 |
 | §5 خامساً | الدورات التدريبية المنفذة | performance card | — | 🔜 H3a / H4 |
 | §5 خامساً | الترقيات والتغييرات الوظيفية | `recentChanges` (transfer / promotion, last 30 days) | ✓ | ✅ |
-| §5 | الانتقال من المؤشر الإجمالي إلى التفاصيل، مثل عرض الموظفين المتأخرين أو الطلبات المعلقة أو العقود المنتهية | every KPI tile and every bar links to a filtered list (department / branch / nationality / employment type / status / request state and period / expiring kind); late employees 🔜 H2 (attendance) | `golive-h.test.ts` H5; `hr-h1.test.ts` (list filters) | ✅ · late employees 🔜 H2 |
+| §5 | الانتقال من المؤشر الإجمالي إلى التفاصيل، مثل عرض الموظفين المتأخرين أو الطلبات المعلقة أو العقود المنتهية | every KPI tile and every bar links to a filtered list (department / branch / nationality / employment type / status / request state and period / expiring kind); the late employees open `/hr/attendance?status=late` for the period (H2) | `golive-h.test.ts` H5; `hr-h1.test.ts`; `hr-h2.test.ts` (`/days?status=late`) | ✅ |
 
 ## §6 الصلاحيات وإدارة المستخدمين (Access Control)
 
@@ -311,10 +313,10 @@ Status legend: ✅ built · 🔜 planned slice · ⏸ waits for an owner answer 
 | §7.1 | التكامل مع بقية وحدات ERP | outbox events `hr.employee.*`, `hr.request.*`, `hr.request.handoff.finance`; shared employee lookups for Sales / tasks | `core/outbox/outbox.test.ts`; `requests.test.ts` advance test | ✅ |
 | §7.2 | واجهات برمجية (APIs) تسمح بربط النظام بتطبيق للهواتف الذكية مستقبلاً | REST `/api/v1/hr/*` with cookie session; generated API document `/api/v1/docs` (`core/openapi`) lists every mounted route and its permission | `modules/sales/sales-s5.test.ts` «API document: every Sales, CRM, invoice and discussion route is listed…» (HR routes not asserted) | ✅ · 🔜 H4 HR assertion |
 | §7.3 | دعم تعدد الفروع ومواقع التشغيل | `branches`, `sites` (per branch), employee `branchId / siteId`, dashboard by branch | `core/org/org.test.ts` | ✅ |
-| §7.4 | دعم الموظفين العاملين في المواقع الميدانية | status «عمل ميداني» counts as on duty (`ON_DUTY_STATUSES`); field punching 🔜 H2 | `core/tasks/distribution.test.ts` (on-duty rule) | ✅ status · 🔜 H2 |
+| §7.4 | دعم الموظفين العاملين في المواقع الميدانية | status «عمل ميداني» counts as on duty (`ON_DUTY_STATUSES`); field shift with several sites and GPS punching (H2) | `core/tasks/distribution.test.ts`; `hr-h2.test.ts` | ✅ |
 | §7.5 | حفظ الطلبات والمعاملات كمسودات واستكمالها لاحقاً | `core/drafts` (`PUT /drafts` per `formKey`); HR request form wired (H1); recruitment requisition draft 🔜 H3b | `hr-h1.test.ts` «§7.5 drafts…» | ✅ requests · 🔜 H3b (requisition) |
 | §7.6 | سجل تدقيق (Audit Log) لجميع العمليات والتعديلات | `core/audit` on every write, sensitive views / exports flagged; `/admin/audit` | `core/org/org.test.ts` (before/after); `dashboard.test.ts` (sensitive export audited) | ✅ |
-| §7.7 | نظام إشعارات داخلي للموظفين والمديرين | `core/notifications` + center `/notifications`; HR types `contract.expiring`, `probation.ending`, `employee.birthday`, `secondment.report_reminder`, `employee.manager_or_department_changed`, `employee.promotion`, `employee.data_updated`, `document.expiring`, `request.decided` | `core/notifications/notifications.test.ts`; `apps/web/src/test/source-hygiene.test.ts` «every notification type has a badge label» | ✅ |
+| §7.7 | نظام إشعارات داخلي للموظفين والمديرين | `core/notifications` + center `/notifications`; HR types `contract.expiring`, `probation.ending`, `employee.birthday`, `secondment.report_reminder`, `employee.manager_or_department_changed`, `employee.promotion`, `employee.data_updated`, `document.expiring`, `request.decided`, `attendance.missed_punch` (H2) | `core/notifications/notifications.test.ts`; `apps/web/src/test/source-hygiene.test.ts` «every notification type has a badge label» | ✅ |
 | §7.8 | حماية البيانات الشخصية والوظيفية وتقييد الوصول إليها | AES-256-GCM identity / IBAN, HKDF per-purpose keys, default-deny sensitive fields, scrypt passwords, TOTP for HR / Finance / admin | `core/auth/hardening.test.ts`, `security.test.ts`; `golive-access.test.ts` E1 | ✅ |
 | §7.9 | توفير نسخ احتياطية للبيانات | configuration, not code: `docs/DEPLOY.md` «Backups» (Atlas cloud backup checklist) | — | ✅ (documented; ⏸ DECISIONS §1 infrastructure) |
 | §7.10 | واجهات سهلة الاستخدام ومتوافقة مع الأجهزة المختلفة | Tailwind RTL, tables → cards at 375 px; attendance / payslips phone-first | `source-hygiene.test.ts` (copy, keys); 375 px pass 🔜 H4 | ✅ · 🔜 H4 check |
@@ -336,15 +338,15 @@ Status legend: ✅ built · 🔜 planned slice · ⏸ waits for an owner answer 
 |---|---|---|---|---|---|
 | 1 | واجهة رئيسية لقسم الموارد البشرية | `/hr` landing (`HrHomePage`): queues (requests awaiting HR, needs completion, pending profile changes, secondments without report), alerts (expiring within 30 days, probation, headcount), shortcuts; later queues arrive with H2–H3 | `/hr/dashboard/hr`, `/hr/requests?view=queue`, `/hr/profile-changes` | `hr-h1.test.ts` (dashboard counts), web hygiene tests (routes, keys) | ✅ |
 | 2 | واجهة الهيكل التنظيمي | `/admin/departments|units|branches|positions` + org-chart tree `/hr/org-chart` (collapsible, search, scope-limited) | `/org/*`, `GET /hr/org-chart` | `core/org/org.test.ts`; `hr-h1.test.ts` «§9.2 org chart…» | ✅ |
-| 3 | واجهة ملف الموظف الإلكتروني | `/hr/employees/:id` (6 tabs), `/me/profile` | `/hr/employees/*`, `/hr/me` | `hr.test.ts`, `portal.test.ts` | ✅ (new tabs H2–H3b) |
+| 3 | واجهة ملف الموظف الإلكتروني | `/hr/employees/:id` (8 tabs: + الحضور, الإجازات in H2), `/me/profile` | `/hr/employees/*`, `/hr/me`, `/hr/attendance/days`, `/hr/leave/*` | `hr.test.ts`, `portal.test.ts`, `hr-h2.test.ts` | ✅ (payroll / performance / offboarding tabs H3) |
 | 4 | واجهة التوظيف وإجراءات مباشرة الموظف | `/hr/recruitment/*`, `/manager/requisitions` | `/hr/recruitment/*` | — | 🔜 H3b |
-| 5 | واجهة الحضور والانصراف | `/me/attendance`, `/manager/attendance`, `/hr/attendance`, `/hr/shifts` | `/hr/attendance/*`, `/hr/shifts/*` | — | 🔜 H2 |
-| 6 | واجهة طلبات الموظفين والخدمات الذاتية | `/me/requests`, `/manager/requests`, `/hr/requests`, detail page | `/hr/requests/*` | `requests.test.ts`; `hr-h1.test.ts` (drafts, archive) | ✅ (two more types 🔜 H2) |
+| 5 | واجهة الحضور والانصراف | `/me/attendance` (phone-first), `/manager/attendance`, `/hr/attendance`, `/hr/shifts`, `/hr/leave` | `/hr/attendance/*`, `/hr/shifts/*`, `/hr/leave/*` | `hr-h2.test.ts` (10 tests); web hygiene and label-parity tests | ✅ |
+| 6 | واجهة طلبات الموظفين والخدمات الذاتية | `/me/requests`, `/manager/requests`, `/hr/requests`, detail page; eleven types since H2 | `/hr/requests/*` | `requests.test.ts`; `hr-h1.test.ts` (drafts, archive); `hr-h2.test.ts` | ✅ |
 | 7 | واجهة العقود والوثائق | employee tabs العقود / الوثائق, `/hr/expiring` | `/hr/employees/:id/contracts*`, `/documents` | `hr.test.ts`, `golive-h.test.ts` H5; `hr-h1.test.ts` (`hr.documents_expiring`) | ✅ |
 | 8 | واجهة الرواتب والمزايا | `/hr/payroll`, `/finance/payroll`, `/me/payslips`; today: salary section on the file | `/hr/payroll/*` | — | ✅ salary master · 🔜 H3a |
 | 9 | واجهة تقييم الأداء والتدريب | `/hr/performance`, `/manager/appraisals`, `/me/performance`, `/hr/training` | `/hr/performance/*`, `/hr/training/*` | — | 🔜 H3a |
 | 10 | واجهة إنهاء الخدمة | `/hr/offboarding/*`, `/it/offboarding` | `/hr/offboarding/*` | — | 🔜 H3b |
-| 11 | لوحة تحكم الموارد البشرية | `/hr/dashboard` | `/hr/dashboard/hr`, `/hr/dashboard/expiring` | `dashboard.test.ts` | ✅ partial → H1 / H2 / H4 |
+| 11 | لوحة تحكم الموارد البشرية | `/hr/dashboard` (headcount, expiries, requests, attendance since H2) | `/hr/dashboard/hr`, `/hr/dashboard/expiring` | `dashboard.test.ts`, `hr-h1.test.ts`, `hr-h2.test.ts` | ✅ (performance cards H3a / H4) |
 | 12 | نظام التقارير والتصدير إلى Excel | `/hr/export` | `/export/resources`, `/export` | `core/export/export.test.ts`, `dashboard.test.ts` | ✅ (scope grows per slice) |
 | 13 | نظام الصلاحيات والإشعارات | `/admin/roles`, `/notifications` | `/roles`, `/notifications` | `core/rbac/rbac.test.ts`, `core/notifications/notifications.test.ts` | ✅ |
 | 14 | توثيق واجهات الربط البرمجية وإمكانية التوسع مستقبلاً | `/api/v1/docs` | generated | `sales-s5.test.ts` (Sales routes) | ✅ · 🔜 H4 HR assertion + `docs/HR_GOV_INTEGRATIONS.md` |

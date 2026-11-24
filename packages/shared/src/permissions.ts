@@ -148,4 +148,9 @@ export const TEAM_LEAD_GRANTS: PermissionGrant[] = [
   { resource: 'tasks', actions: ['view', 'create', 'edit'], scope: 'team' },
   { resource: 'hr.requests', actions: ['view'], scope: 'team' },
   { resource: 'hr.reports', actions: ['view'], scope: 'team' },
+  // H2 [HR §3.4, HR_PLAN §6]: a direct manager follows the team's attendance and leave balances (no coordinates).
+  { resource: 'hr.attendance', actions: ['view'], scope: 'team' },
+  { resource: 'hr.attendance.reports', actions: ['view'], scope: 'team' },
+  { resource: 'hr.leave', actions: ['view'], scope: 'team' },
+  { resource: 'hr.shifts', actions: ['view'], scope: 'team' },
 ];

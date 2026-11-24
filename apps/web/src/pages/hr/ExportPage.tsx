@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
+import { LEAVE_TYPES } from '@eayni/shared';
 import { api, get } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import {
@@ -54,7 +55,9 @@ export function ExportPage() {
       ),
     enabled: empSearch.trim().length >= 2,
   });
-  const employeeAware = resource === 'employees' || resource === 'hr.documents_expiring';
+  const ATTENDANCE_RESOURCES = ['hr.attendance_log', 'hr.lateness_log', 'hr.absence_log', 'hr.hours_overtime', 'hr.corrections', 'hr.attendance_monthly_employee', 'hr.attendance_totals', 'hr.leave_balances', 'hr.leave_taken'];
+  const attendanceResource = ATTENDANCE_RESOURCES.includes(resource);
+  const employeeAware = resource === 'employees' || resource === 'hr.documents_expiring' || attendanceResource;
   const current = useMemo(
     () => resources.data?.items.find((r) => r.resource === resource),
     [resources.data, resource],
@@ -316,6 +319,67 @@ export function ExportPage() {
                       value={filters.nationality ?? ''}
                       onChange={(e) => setFilters((s) => ({ ...s, nationality: e.target.value }))}
                     />
+                  </Field>
+                </div>
+              </Card>
+            )}
+            {attendanceResource && (
+              <Card title={t('export.filters')}>
+                <div className="space-y-2">
+                  {resource !== 'hr.leave_balances' && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <Field label={t('export.from')}>
+                        <Input type="date" dir="ltr" value={filters.from ?? ''} onChange={(e) => setFilters((s) => ({ ...s, from: e.target.value }))} />
+                      </Field>
+                      <Field label={t('export.to')}>
+                        <Input type="date" dir="ltr" value={filters.to ?? ''} onChange={(e) => setFilters((s) => ({ ...s, to: e.target.value }))} />
+                      </Field>
+                    </div>
+                  )}
+                  {resource === 'hr.leave_balances' && (
+                    <>
+                      <Field label={t('leave.year')}>
+                        <Input type="number" dir="ltr" value={filters.year ?? ''} onChange={(e) => setFilters((s) => ({ ...s, year: e.target.value }))} />
+                      </Field>
+                      <Field label={t('leave.type')}>
+                        <Select value={filters.leaveType ?? ''} onChange={(e) => setFilters((s) => ({ ...s, leaveType: e.target.value }))}>
+                          <option value="">{t('export.leaveDefaultTypes')}</option>
+                          {LEAVE_TYPES.map((x) => (
+                            <option key={x} value={x}>
+                              {t(`requests.leaveTypes.${x}`)}
+                            </option>
+                          ))}
+                        </Select>
+                      </Field>
+                    </>
+                  )}
+                  {resource === 'hr.attendance_totals' && (
+                    <Field label={t('export.groupBy')}>
+                      <Select value={filters.groupBy ?? 'department'} onChange={(e) => setFilters((s) => ({ ...s, groupBy: e.target.value }))}>
+                        <option value="department">{t('hr.department')}</option>
+                        <option value="branch">{t('hr.branch')}</option>
+                      </Select>
+                    </Field>
+                  )}
+                  <Field label={t('hr.department')}>
+                    <Select value={filters.departmentId ?? ''} onChange={(e) => setFilters((s) => ({ ...s, departmentId: e.target.value }))}>
+                      <option value="">{t('common.all')}</option>
+                      {lk.departments.map((x) => (
+                        <option key={x._id} value={x._id}>
+                          {x.nameAr}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Field label={t('hr.branch')}>
+                    <Select value={filters.branchId ?? ''} onChange={(e) => setFilters((s) => ({ ...s, branchId: e.target.value }))}>
+                      <option value="">{t('common.all')}</option>
+                      {lk.branches.map((x) => (
+                        <option key={x._id} value={x._id}>
+                          {x.nameAr}
+                        </option>
+                      ))}
+                    </Select>
                   </Field>
                 </div>
               </Card>

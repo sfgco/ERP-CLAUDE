@@ -22,6 +22,10 @@ import { employeeOfUser, hrUserIds, registerManagerChangeHandler } from './servi
 import { issueCertificate } from './certificates';
 import { claimAttachments } from '../../core/files/service';
 import { withTransaction } from '../../db';
+import { applyApprovedRequest, daysBetween, recomputeDays, validateAttendanceRequest } from './attendance.service';
+import { onLeaveApproved, validateLeaveRequest } from './leave.service';
+
+const ATTENDANCE_TYPES = new Set(['attendance_correction', 'geofence_exception', 'overtime']);
 
 const FINANCE_ROLES = ['finance_staff', 'finance_manager'];
 const HR_ROLES = ['hr_officer', 'hr_manager'];
@@ -158,12 +162,20 @@ export async function createRequest(
 ): Promise<HrRequestDoc> {
   const employee = await employeeOfUser(String(user._id));
   if (!employee) throw badRequest('لا يوجد ملف موظف مرتبط بحسابك');
-  const details = validateDetails(input.type, input.details);
+  let details = validateDetails(input.type, input.details);
   const route = await routeFor(input.type);
   const def = await getWorkflow('hr_request');
   const wf = await initWorkflow(def);
   const managerUserId = await managerUserIdOf(employee);
   const flags: string[] = [];
+  // H2 rules: leave balance and the 2025 event rules [HR §3.5.1, DECISIONS §21 Q7]; attendance request policies (Q3 / Q5 / Q6).
+  if (input.type === 'leave')
+    flags.push(...(await validateLeaveRequest(details as never, employee, input.attachmentIds.length)));
+  if (ATTENDANCE_TYPES.has(input.type)) {
+    const v = await validateAttendanceRequest(input.type as never, details, employee);
+    flags.push(...v.flags);
+    details = v.details;
+  }
   if (input.type === 'advance') {
     const limit = await getSetting('hr.advanceLimitHalalas');
     if (limit === null)
@@ -284,6 +296,9 @@ export async function transition(
     effective = code === 'approve' ? pair[0] : pair[1];
     if (effective === 'hr_approve' && request.route?.finalApprover === 'hr_then_finance')
       effective = 'hr_forward_final';
+    // The direct manager's approval is final for routes without HR (overtime, DECISIONS §21 Q16).
+    if (effective === 'manager_approve' && request.route?.finalApprover === 'manager')
+      effective = 'manager_final_approve';
   }
   if (code === 'return') effective = 'hr_return';
   if (FINAL_TRANSITIONS.has(effective) && !opts.relations.includes('approver'))
@@ -306,6 +321,7 @@ export async function transition(
 
   // One transaction (review B10): conditional record update → certificate → stage log → action log →
   // audit → outbox. A lost race (review B9) throws 409 before anything is written.
+  let recomputeAfter: string[] = [];
   const { doc, to } = await withTransaction(async (session) => {
     if (opts.attachmentIds)
       await claimAttachments(opts.attachmentIds, 'hr_request', String(request._id), opts.user._id, session);
@@ -338,6 +354,15 @@ export async function transition(
       },
     });
     const doc = updated! as HrRequestDoc;
+    // H2: approved leave writes the ledger row; approved attendance requests write their punch / exception (HR_PLAN §5).
+    if (result.to === 'approved') {
+      if (doc.type === 'leave') {
+        const range = await onLeaveApproved(doc as never, opts.actor, session);
+        recomputeAfter = daysBetween(range.from, range.to, 120);
+      } else if (ATTENDANCE_TYPES.has(doc.type) || doc.type === 'remote_work') {
+        recomputeAfter = await applyApprovedRequest(doc as never, opts.actor, session, now);
+      }
+    }
     // Certificates are generated on approval [HR §3.5.4–3.5.5], only by the transition that won.
     if (result.to === 'approved' && isCertificate) {
       const cert = await issueCertificate(doc, employee, String(opts.user._id), session);
@@ -412,6 +437,9 @@ export async function transition(
     }
     return { doc, to: result.to };
   });
+
+  // The computed days read the committed punches / exceptions / ledger (HR §3.4 رابعاً).
+  if (recomputeAfter.length) await recomputeDays(employee._id, recomputeAfter, now);
 
   // Notifications after commit [HR §3.5 stage 4, EP §15.8].
   if (to === 'approved' || to === 'rejected') {

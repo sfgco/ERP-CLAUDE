@@ -44,6 +44,7 @@ import { ticketsRouter } from './modules/tickets/routes';
 import { newsRouter } from './modules/news/routes';
 import { employeeReportsRouter } from './modules/hr/reports.routes';
 import { dashboardRouter } from './modules/hr/dashboard.routes';
+import { attendanceRouter, leaveRouter, shiftsRouter } from './modules/hr/attendance.routes';
 
 /**
  * Express app. Staff realm under /api/v1; the external realm (/api/portal) is added with the
@@ -94,6 +95,10 @@ export function createApp(): Express {
   v1.use('/hr/requests', requestsRouter);
   v1.use('/hr/employee-reports', employeeReportsRouter);
   v1.use('/hr/dashboard', dashboardRouter);
+  // H2 — attendance, schedules and leave balances [HR §3.4, §3.5.1]
+  v1.use('/hr/attendance', attendanceRouter);
+  v1.use('/hr/shifts', shiftsRouter);
+  v1.use('/hr/leave', leaveRouter);
   v1.use('/tickets', ticketsRouter);
   v1.use('/news', newsRouter);
   v1.use('/hr', hrRouter);

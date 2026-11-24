@@ -6,6 +6,14 @@ import { DEFAULT_ORGANIZATION_TYPES } from './schemas/crm';
 import { DEFAULT_FACILITY_SIZES, DEFAULT_LOSS_REASONS } from './schemas/sales';
 import { SALES_LIST_KEYS } from './schemas/salesRequests';
 import { DEFAULT_QUOTE_REJECTION_REASONS } from './schemas/salesPricing';
+import {
+  attendanceRulesSchema,
+  correctionPolicySchema,
+  DEFAULT_LEAVE_POLICIES,
+  leavePoliciesSchema,
+  locationPolicySchema,
+  overtimePolicySchema,
+} from './schemas/attendance';
 
 /**
  * Settings registry: everything the specs want configurable lives here with a default and a schema
@@ -18,6 +26,11 @@ export interface SettingDefinition<T = unknown> {
   group: 'auth' | 'tickets' | 'hr' | 'notifications' | 'general' | 'system' | 'crm' | 'sales';
   schema: z.ZodType<T>;
   default: T;
+  /**
+   * The default is a proposal awaiting the owner's or the HR team's confirmation (DECISIONS §21): screens show
+   * «مؤقت حتى اعتماد الموارد البشرية» until an admin confirms the setting (stored flag) or stores a value.
+   */
+  provisional?: boolean;
 }
 
 function def<T>(d: SettingDefinition<T>): SettingDefinition<T> {
@@ -358,6 +371,91 @@ export const SETTING_DEFINITIONS = {
     group: 'hr',
     schema: z.number().int().min(0).max(60),
     default: 5, // H1: same cadence as the tickets' auto-close (DECISIONS §8); HR may close earlier by hand
+  }),
+  // ---- Attendance and leave [HR §3.4, §3.5.1; HR_PLAN §8; DECISIONS §21 Q1–Q7, Q16–Q17]
+  'hr.attendance.defaultShiftCode': def({
+    key: 'hr.attendance.defaultShiftCode',
+    labelAr: 'جدول الدوام الافتراضي لمن لا إسناد له (رمز الوردية)',
+    descriptionAr:
+      'الدوام الأساسي 08:00–16:00 الأحد–الخميس ورمضان 10:00–16:00 (المادتان 98 و101) — مؤقت حتى اعتماد الموارد البشرية (Q1)',
+    group: 'hr',
+    schema: z.string().trim().min(2).max(30).nullable(),
+    default: 'standard',
+    provisional: true,
+  }),
+  'hr.attendance.geofenceDefaultRadiusM': def({
+    key: 'hr.attendance.geofenceDefaultRadiusM',
+    labelAr: 'نصف قطر النطاق الجغرافي الافتراضي للموقع (متر) عندما لا يحدَّد على الموقع',
+    group: 'hr',
+    schema: z.number().int().min(20).max(5000),
+    default: 150, // Q2
+    provisional: true,
+  }),
+  'hr.attendance.locationPolicy': def({
+    key: 'hr.attendance.locationPolicy',
+    labelAr: 'سياسة الموقع الجغرافي عند التسجيل: إلزامية الموقع، حد الدقة، والتعامل مع تعذر تحديده',
+    descriptionAr: 'Q3: الموقع إلزامي، الدقة حتى ضِعف نصف القطر، وعند التعذر يُرفض التسجيل ويُطلب استثناء',
+    group: 'hr',
+    schema: locationPolicySchema,
+    default: { requireLocation: true, maxAccuracyFactor: 2, onUnavailable: 'refuse' as const },
+  }),
+  'hr.attendance.exceptionMaxDays': def({
+    key: 'hr.attendance.exceptionMaxDays',
+    labelAr: 'الحد الأقصى لمدة طلب الاستثناء من النطاق الجغرافي (أيام)',
+    group: 'hr',
+    schema: z.number().int().min(1).max(90),
+    default: 5, // Q3
+  }),
+  'hr.attendance.rules': def({
+    key: 'hr.attendance.rules',
+    labelAr: 'قواعد التأخير والغياب والانصراف المبكر والتنبيه بنسيان التسجيل (دقائق)',
+    descriptionAr:
+      'Q4: سماح 10 دقائق، الغياب = لا تسجيل حضور حتى نهاية الدوام، نسيان الانصراف يُعلَّم وتنتظر ساعاته طلب تعديل',
+    group: 'hr',
+    schema: attendanceRulesSchema,
+    default: {
+      graceMinutes: 10,
+      earlyLeaveGraceMinutes: 10,
+      absentWhenNoCheckIn: true,
+      missingCheckoutPolicy: 'wait_correction' as const,
+      missedCheckInAlertMinutes: 30,
+      missedCheckOutAlertMinutes: 60,
+    },
+  }),
+  'hr.overtime': def({
+    key: 'hr.overtime',
+    labelAr: 'سياسة العمل الإضافي: الموافقة المسبقة، النسبة، التقريب، الحد، وطريقة التعويض',
+    descriptionAr:
+      'Q5 + DECISIONS §21: 150% من أجر الساعة الأساسي (المادة 107)، تقريب 15 دقيقة، التعويض صرف / إجازة / اختيار الموظف (1.5 ساعة إجازة لكل ساعة، خلال 60 يوماً، حتى 30 يوماً سنوياً)',
+    group: 'hr',
+    schema: overtimePolicySchema,
+    default: {
+      requiresPreApproval: true,
+      rateBp: 15_000,
+      roundingMinutes: 15,
+      monthlyCapMinutes: null,
+      compensation: 'pay' as const,
+      leaveHoursPerOvertimeHour: 1.5,
+      leaveUseWithinDays: 60,
+      leaveMaxDaysPerYear: 30,
+    },
+  }),
+  'hr.attendance.correction': def({
+    key: 'hr.attendance.correction',
+    labelAr: 'طلبات تعديل البصمة: المهلة بالأيام والحد الشهري قبل التعليم للموارد البشرية',
+    group: 'hr',
+    schema: correctionPolicySchema,
+    default: { deadlineDays: 7, perMonth: 3 }, // Q6
+  }),
+  'hr.leave.policies': def({
+    key: 'hr.leave.policies',
+    labelAr: 'سياسات الإجازات لكل نوع: الاستحقاق، الاستحقاق الشهري، الترحيل، نسبة الأجر، المرفقات، وتجاوز الرصيد',
+    descriptionAr:
+      'Q7 + تعديلات 2025 (DECISIONS §21): أرقام نظام العمل بمواده؛ إجازات الجمعية الخاصة (اضطرارية) مؤقتة حتى اعتماد الموارد البشرية',
+    group: 'hr',
+    schema: leavePoliciesSchema,
+    default: DEFAULT_LEAVE_POLICIES,
+    provisional: true,
   }),
   'hr.probationAlertDaysBefore': def({
     key: 'hr.probationAlertDaysBefore',

@@ -19,6 +19,8 @@ import { HrRequest } from './requests.model';
 import { PENDING_STATES } from './requests.routes';
 import { EXPIRING_KINDS, expiringRows, type ExpiringKind } from './expiring';
 import { EmployeeReport } from './reports.model';
+import { AttendanceDay } from './attendance.model';
+import { dayTime, summarizeDays } from './attendance.service';
 
 export const dashboardRouter = Router();
 const DAY = 86_400_000;
@@ -171,7 +173,31 @@ dashboardRouter.get(
       Math.floor((now.getTime() - new Date(r.createdAt ?? now).getTime()) / DAY);
     const employeeIds = new Set(employees.map((e) => String(e._id)));
     const liveContracts = contracts.filter((c) => employeeIds.has(String(c.employeeId)));
+    // «الحضور والانصراف» [HR §5 ثانياً] over the same period, from the computed days; «في إجازة» = approved leave today.
+    const [dayRows, onLeaveToday] = await Promise.all([
+      AttendanceDay.find({ day: { $gte: period.from, $lte: period.to }, employeeId: { $in: [...employeeIds] } })
+        .select('status scheduled workedMinutes lateMinutes overtimeMinutes overtimeApprovedMinutes earlyLeaveMinutes final')
+        .lean(),
+      HrRequest.countDocuments({
+        deletedAt: null,
+        type: 'leave',
+        employeeId: { $in: [...employeeIds] },
+        $or: [{ state: 'approved' }, { state: 'closed', 'decision.outcome': 'approved' }],
+        'details.startDate': { $lte: dayTime(today, '23:59') },
+        'details.endDate': { $gte: new Date(dayTime(today, '00:00').getTime() - DAY) },
+      }),
+    ]);
+    const att = summarizeDays(dayRows as never);
     res.json({
+      attendance: {
+        period,
+        absent: att.absentDays,
+        late: att.lateDays,
+        missingPunches: att.missingPunchDays,
+        workedMinutes: att.workedMinutes,
+        overtimeApprovedMinutes: att.overtimeApprovedMinutes,
+        onLeaveToday,
+      },
       headcount: {
         total: employees.length,
         byDepartment: count(employees, (e) => deptName.get(String(e.departmentId))).map((x) => ({

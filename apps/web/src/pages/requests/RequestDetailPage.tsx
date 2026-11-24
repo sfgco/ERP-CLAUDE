@@ -100,6 +100,10 @@ export function RequestDetailPage() {
   const fieldValue = (k: string, v: unknown): string => {
     if (k === 'amountHalalas') return sar(Number(v));
     if (k === 'leaveType') return t(`requests.leaveTypes.${v}`);
+    if (k === 'kind') return t(`requests.correctionKinds.${v}`, String(v));
+    if (k === 'scope') return t(`requests.exceptionScopes.${v}`, String(v));
+    if (k === 'compensation') return t(`requests.compensations.${v}`, String(v));
+    if (k === 'day' || k === 'from' || k === 'to') return formatDate(String(v));
     if (typeof v === 'boolean') return v ? t('common.yes') : t('common.no');
     if (k.endsWith('Date') || k === 'date') return formatDate(String(v));
     return String(v ?? '');
