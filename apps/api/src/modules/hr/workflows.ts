@@ -78,7 +78,7 @@ export const DISCIPLINARY_WORKFLOW: WorkflowDefinitionInput = {
     { code: 'reject', labelAr: 'رفض الإجراء', from: ['pending_approval'], to: 'withdrawn', allow: ['approver'], requireReason: true },
     { code: 'deliver', labelAr: 'إبلاغ الموظف كتابياً', from: ['approved'], to: 'delivered', allow: ['hr_officer', 'hr_manager'] },
     { code: 'acknowledge', labelAr: 'إقرار الموظف بالاستلام', from: ['delivered'], to: 'upheld', allow: ['subject'] },
-    { code: 'appeal', labelAr: 'اعتراض الموظف', from: ['delivered'], to: 'appealed', allow: ['subject'], requireReason: true },
+    { code: 'appeal', labelAr: 'تظلم الموظف', from: ['delivered'], to: 'appealed', allow: ['subject'], requireReason: true },
     { code: 'uphold', labelAr: 'تثبيت الإجراء', from: ['appealed', 'delivered'], to: 'upheld', allow: ['approver', 'system'] },
     { code: 'withdraw', labelAr: 'سحب الإجراء', from: ['appealed', 'approved', 'delivered', 'draft', 'pending_approval'], to: 'withdrawn', allow: ['approver', 'hr_manager'], requireReason: true },
   ],

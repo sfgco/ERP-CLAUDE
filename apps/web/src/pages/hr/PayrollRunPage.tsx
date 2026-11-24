@@ -84,7 +84,7 @@ export function PayrollRunPage({ finance = false }: { finance?: boolean }) {
       {r.provisional && <Alert kind="warning">{t('payroll.provisional')}</Alert>}
       {r.flags.length > 0 && (
         <Alert kind="info">
-          {t('payroll.flagsTitle')}: {r.flags.filter((f) => !f.startsWith('deferred:')).map((f) => t(`payroll.flags.${f}`, f)).join(' · ')}
+          {t('payroll.flagsTitle')}: {r.flags.filter((f) => !f.includes('deferred:')).map((f) => t(`payroll.flags.${f}`, f)).join(' · ')}
         </Alert>
       )}
       <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
@@ -149,8 +149,8 @@ export function PayrollRunPage({ finance = false }: { finance?: boolean }) {
                 <Td className="tabular font-semibold">{riyals(p.netHalalas)}</Td>
                 <Td className="text-xs text-slate-600">
                   {t('payroll.attLine', { present: p.attendance?.presentDays ?? 0, absent: p.attendance?.absentDays ?? 0, late: p.attendance?.lateMinutes ?? 0, ot: p.attendance?.overtimeApprovedMinutes ?? 0 })}
-                  {p.flags.filter((f) => f !== 'provisional_policy' && !f.startsWith('deferred:')).length > 0 && (
-                    <div className="text-amber-700">{p.flags.filter((f) => f !== 'provisional_policy' && !f.startsWith('deferred:')).map((f) => t(`payroll.flags.${f}`, f)).join(' · ')}</div>
+                  {p.flags.filter((f) => f !== 'provisional_policy' && !f.includes('deferred:')).length > 0 && (
+                    <div className="text-amber-700">{p.flags.filter((f) => f !== 'provisional_policy' && !f.includes('deferred:')).map((f) => t(`payroll.flags.${f}`, f)).join(' · ')}</div>
                   )}
                 </Td>
                 <Td>

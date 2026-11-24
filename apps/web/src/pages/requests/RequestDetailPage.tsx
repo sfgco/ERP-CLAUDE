@@ -98,7 +98,7 @@ export function RequestDetailPage() {
   >;
   const fieldLabel = (k: string) => t(`requests.fields.${k}`, k);
   const fieldValue = (k: string, v: unknown): string => {
-    if (k === 'amountHalalas') return sar(Number(v));
+    if (k === 'amountHalalas' || k === 'instalmentHalalas') return sar(Number(v));
     if (k === 'leaveType') return t(`requests.leaveTypes.${v}`);
     if (k === 'kind') return t(`requests.correctionKinds.${v}`, String(v));
     if (k === 'scope') return t(`requests.exceptionScopes.${v}`, String(v));

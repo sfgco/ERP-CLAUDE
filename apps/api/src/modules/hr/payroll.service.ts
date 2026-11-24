@@ -2,6 +2,7 @@ import type { ClientSession } from 'mongoose';
 import {
   LEAVE_TYPE_AR,
   PAYSLIP_LINE_AR,
+  type DisciplinePolicy,
   type GosiGroup,
   type GosiRateRow,
   type LeaveType,
@@ -68,27 +69,53 @@ export function gosiRateFor(group: GosiGroup, periodEndDay: string, rates: GosiR
   return rows[0] ?? null;
 }
 
+/**
+ * GOSI contribution wage (owner decisions 2026-11-24): basic + the housing-type allowances + the monthly commissions
+ * (when `gosiIncludeCommissions`), then bounded to [gosiWageMinHalalas, gosiWageMaxHalalas] (1 500 – 45 000 SAR).
+ */
+export function gosiWageOf(basic: number, allowances: { type: string; amountHalalas: number }[], policy: PayrollPolicy): { wage: number; bounded: 'min' | 'max' | null } {
+  let wage = basic + allowances.filter((a) => policy.gosiWageAllowanceTypes.includes(a.type)).reduce((s, a) => s + a.amountHalalas, 0);
+  if (policy.gosiIncludeCommissions) wage += allowances.filter((a) => policy.gosiCommissionAllowanceTypes.includes(a.type)).reduce((s, a) => s + a.amountHalalas, 0);
+  if (policy.gosiWageMaxHalalas !== null && wage > policy.gosiWageMaxHalalas) return { wage: policy.gosiWageMaxHalalas, bounded: 'max' };
+  if (policy.gosiWageMinHalalas !== null && wage > 0 && wage < policy.gosiWageMinHalalas) return { wage: policy.gosiWageMinHalalas, bounded: 'min' };
+  return { wage, bounded: null };
+}
+
+/**
+ * The overtime hour (art. 107, owner decision 2026-11-24): the hour of the actual wage (basic + allowances) ÷ 30 ÷ daily
+ * hours, plus the premium (rateBp − 100 %, i.e. 50 %) of the hour of the *basic* wage — never actual × 1.5.
+ * Example: basic 4 000 + allowances 2 000, 8 h → 25 + 8.33 = 33.33 SAR.
+ */
+export function overtimeHourHalalas(basic: number, total: number, dailyHours: number, rateBp: number): number {
+  const actualHour = total / 30 / dailyHours;
+  const basicHour = basic / 30 / dailyHours;
+  return actualHour + basicHour * ((rateBp - 10_000) / 10_000);
+}
+
 // ---------- computation ----------
 interface Ctx {
   policy: PayrollPolicy;
   gosiRates: GosiRateRow[];
   overtime: OvertimePolicy;
+  discipline: DisciplinePolicy;
   leave: Awaited<ReturnType<typeof leavePolicies>>['policies'];
   provisional: boolean;
   window: { from: string; to: string };
   period: string;
 }
 async function computeCtx(period: string): Promise<Ctx> {
-  const [policyMeta, gosiRates, overtime, leave] = await Promise.all([
+  const [policyMeta, gosiRates, overtime, discipline, leave] = await Promise.all([
     getSettingMeta('hr.payroll.policy'),
     getSetting('hr.payroll.gosiRates'),
     getSetting('hr.overtime'),
+    getSetting('hr.discipline'),
     leavePolicies(),
   ]);
   return {
     policy: policyMeta.value,
     gosiRates,
     overtime,
+    discipline,
     leave: leave.policies,
     provisional: policyMeta.provisional || leave.provisional,
     window: attendanceWindow(period, policyMeta.value.cutoffDay),
@@ -137,10 +164,9 @@ export async function computePayslip(employee: EmployeeDoc, run: PayrollRunDoc, 
   }
   if (unpaidLeaveDays > 0)
     deductions.push({ code: 'unpaid_leave', labelAr: PAYSLIP_LINE_AR.unpaid_leave, amountHalalas: round(unpaidLeaveDays * dayRate), days: Math.round(unpaidLeaveDays * 100) / 100 });
-  const hourRate = basic / 30 / ctx.policy.dailyHours;
   if (ctx.policy.latenessDeduction === 'per_minute' && s.lateMinutes > 0)
     deductions.push({ code: 'lateness', labelAr: PAYSLIP_LINE_AR.lateness, amountHalalas: round((s.lateMinutes / 60) * (total / 30 / ctx.policy.dailyHours)), minutes: s.lateMinutes });
-  // Overtime [HR §3.6.5]: approved minutes actually worked, paid at rateBp of the basic hourly wage — unless compensated with leave.
+  // Overtime [HR §3.6.5, art. 107]: approved minutes actually worked × (actual hour + 50 % of the basic hour) — unless compensated with leave.
   const otRequests = await HrRequest.find({
     employeeId: employee._id,
     type: 'overtime',
@@ -157,7 +183,8 @@ export async function computePayslip(employee: EmployeeDoc, run: PayrollRunDoc, 
     const comp = compByDay.get(d.day) ?? ctx.overtime.compensation;
     if (comp === 'pay' || comp === 'employee_choice') paidOtMinutes += d.overtimeApprovedMinutes;
   }
-  const otHalalas = round((paidOtMinutes / 60) * hourRate * (ctx.overtime.rateBp / 10_000));
+  const otHour = overtimeHourHalalas(basic, total, ctx.policy.dailyHours, ctx.overtime.rateBp);
+  const otHalalas = round((paidOtMinutes / 60) * otHour);
   if (paidOtMinutes) earnings.push({ code: 'overtime', labelAr: PAYSLIP_LINE_AR.overtime, amountHalalas: otHalalas, minutes: paidOtMinutes, rateBp: ctx.overtime.rateBp });
   // Advance instalment due this period [HR §3.5.6, Q8].
   const schedules = await AdvanceSchedule.find({ employeeId: employee._id, 'instalments.period': ctx.period });
@@ -175,11 +202,27 @@ export async function computePayslip(employee: EmployeeDoc, run: PayrollRunDoc, 
   const { group, flag } = gosiGroupOf(employee, ctx.policy);
   if (flag) flags.push(flag);
   const rate = gosiRateFor(group, lastDayOf(ctx.period), ctx.gosiRates);
-  const gosiWage = basic + allowances.filter((a) => ctx.policy.gosiWageAllowanceTypes.includes(a.type)).reduce((s2, a) => s2 + a.amountHalalas, 0);
+  const { wage: gosiWage, bounded } = gosiWageOf(basic, allowances, ctx.policy);
+  if (bounded) flags.push('gosi_wage_bounded');
   const gosiEmployee = rate ? round((gosiWage * rate.employeeBp) / 10_000) : 0;
   const gosiEmployer = rate ? round((gosiWage * rate.employerBp) / 10_000) : 0;
   if (!rate) flags.push('gosi_rate_missing');
   if (gosiEmployee) deductions.push({ code: 'gosi_employee', labelAr: PAYSLIP_LINE_AR.gosi_employee, amountHalalas: gosiEmployee, rateBp: rate!.employeeBp });
+  // Fines of the month (art. 70, owner decision 2026-11-24): ≤ maxFineDaysPerMonth days of wage; the excess rolls into the next run as a fine.
+  const fineLines = deductions.filter((d) => d.code === 'fine');
+  const fineCap = round((ctx.discipline.maxFineDaysPerMonth * total) / 30);
+  let fineDeferred = 0;
+  let fineSum = fineLines.reduce((x, d) => x + d.amountHalalas, 0);
+  if (fineLines.length && fineSum > fineCap) {
+    fineDeferred = fineSum - fineCap;
+    flags.push('fine_capped');
+    for (let i = fineLines.length - 1; i >= 0 && fineSum > fineCap; i--) {
+      const cut = Math.min(fineLines[i].amountHalalas, fineSum - fineCap);
+      fineLines[i].amountHalalas -= cut;
+      fineLines[i].note = `${fineLines[i].note ?? ''} خُصم جزئياً؛ ${cut} هللة مرحّلة للمسير التالي (حد غرامات الشهر ${ctx.discipline.maxFineDaysPerMonth} أيام — المادة 70)`.trim();
+      fineSum -= cut;
+    }
+  }
   // Deduction cap (art. 92): everything but GOSI ≤ cap; the excess rolls into the next run as an adjustment (at freeze).
   const capped = deductions.filter((d) => d.code !== 'gosi_employee');
   const cap = round((total * ctx.policy.deductionCapBp) / 10_000);
@@ -215,6 +258,7 @@ export async function computePayslip(employee: EmployeeDoc, run: PayrollRunDoc, 
     grossHalalas: gross,
     deductionsHalalas: ded,
     netHalalas: gross - ded,
+    gosiWageHalalas: gosiWage,
     gosiEmployeeHalalas: gosiEmployee,
     gosiEmployerHalalas: gosiEmployer,
     attendance: {
@@ -231,6 +275,7 @@ export async function computePayslip(employee: EmployeeDoc, run: PayrollRunDoc, 
     bankLast4: employee.bank?.ibanLast4,
     flags,
     deferredHalalas: deferred,
+    fineDeferredHalalas: fineDeferred,
     adjustmentIds: adjustments.map((a) => a._id),
     scheduleIds: schedules.map((x) => x._id),
   };
@@ -281,8 +326,8 @@ export async function prepareRun(run: PayrollRunDoc, actor: Actor): Promise<Payr
   const runFlags = new Set<string>();
   for (const e of employees) {
     const p = await computePayslip(e, run, ctx);
-    const { adjustmentIds, scheduleIds, deferredHalalas, ...doc } = p;
-    await Payslip.create({ ...doc, flags: [...doc.flags, ...(deferredHalalas ? [`deferred:${deferredHalalas}`] : [])] });
+    const { adjustmentIds, scheduleIds, deferredHalalas, fineDeferredHalalas, ...doc } = p;
+    await Payslip.create({ ...doc, flags: [...doc.flags, ...(deferredHalalas ? [`deferred:${deferredHalalas}`] : []), ...(fineDeferredHalalas ? [`fine_deferred:${fineDeferredHalalas}`] : [])] });
     if (adjustmentIds.length) await PayrollAdjustment.updateMany({ _id: { $in: adjustmentIds } }, { $set: { consumedByRunId: run._id, consumedAt: new Date() } });
     for (const sid of scheduleIds)
       await AdvanceSchedule.updateOne({ _id: sid }, { $set: { 'instalments.$[i].runId': run._id } }, { arrayFilters: [{ 'i.period': run.period, 'i.runId': null }] });
@@ -390,13 +435,20 @@ export async function transitionRun(run: PayrollRunDoc, code: string, opts: RunT
       await AdvanceSchedule.updateMany({ 'instalments.runId': run._id }, { $set: { 'instalments.$[i].runId': null, 'instalments.$[i].payslipId': null } }, { arrayFilters: [{ 'i.runId': run._id }], session });
     }
     if (code === 'hr_approve') {
-      // Deferred deductions (cap) become next-run adjustments, once, at the freeze.
-      const slips = await Payslip.find({ runId: run._id, flags: 'deduction_capped' }).session(session ?? null);
+      // Deferred deductions (art. 92 cap) and deferred fines (art. 70 monthly cap) become next-run adjustments, once, at the freeze.
+      const slips = await Payslip.find({ runId: run._id, flags: { $in: ['deduction_capped', 'fine_capped'] } }).session(session ?? null);
       for (const p of slips) {
         const deferred = Number(p.flags.find((f) => f.startsWith('deferred:'))?.split(':')[1] ?? 0);
         if (deferred > 0)
           await PayrollAdjustment.create(
             [{ employeeId: p.employeeId, kind: 'deduction', amountHalalas: deferred, reason: `مرحّل من مسير ${run.number} (تجاوز حد الاستقطاع)`, sourceType: 'payroll_cap', sourceId: String(p._id), sourceRunId: run._id, createdByEmail: 'system' }],
+            { session },
+          );
+        const fineDeferred = Number(p.flags.find((f) => f.startsWith('fine_deferred:'))?.split(':')[1] ?? 0);
+        if (fineDeferred > 0)
+          // Kept a fine (sourceType disciplinary) so it counts against next month's fine cap too.
+          await PayrollAdjustment.create(
+            [{ employeeId: p.employeeId, kind: 'deduction', amountHalalas: fineDeferred, reason: `جزاء مرحّل من مسير ${run.number} (حد غرامات الشهر — المادة 70)`, sourceType: 'disciplinary', sourceId: String(p._id), sourceRunId: run._id, createdByEmail: 'system' }],
             { session },
           );
       }
@@ -501,6 +553,19 @@ export async function addAdjustment(input: { employeeId: string; kind: 'earning'
   const row = await PayrollAdjustment.create({ ...input, createdBy: actor.userId, createdByEmail: actor.email });
   await recordAudit(actor, { action: 'create', resource: 'hr.payroll', resourceId: String(row._id), after: { adjustment: input }, sensitive: true });
   return row;
+}
+
+/**
+ * The instalment count an advance must have (owner decision 2026-11-24): the monthly instalment may not exceed
+ * `advanceInstalmentCapBp` (10 %) of the monthly wage unless the employee gave written consent on the request; without
+ * consent the advance is split so no instalment exceeds the cap (36 at most).
+ */
+export function advanceInstalmentPlan(amountHalalas: number, requested: number, wageHalalas: number, consent: boolean, capBp: number): { instalments: number; capHalalas: number; flag: 'instalment_consent_given' | 'instalments_rescheduled' | null } {
+  const n = Math.max(1, requested);
+  const capHalalas = Math.floor((wageHalalas * capBp) / 10_000);
+  if (capHalalas <= 0 || Math.ceil(amountHalalas / n) <= capHalalas) return { instalments: n, capHalalas, flag: null };
+  if (consent) return { instalments: n, capHalalas, flag: 'instalment_consent_given' };
+  return { instalments: Math.min(36, Math.max(n, Math.ceil(amountHalalas / capHalalas))), capHalalas, flag: 'instalments_rescheduled' };
 }
 
 /** On an approved advance (Finance's final step): the instalment plan, from the next period, equal amounts (Q8). */

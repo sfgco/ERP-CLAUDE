@@ -34,7 +34,7 @@ export function NewRequestDialog({
   const qc = useQueryClient();
   const types = useQuery({
     queryKey: ['hr-request-types'],
-    queryFn: () => get<{ items: TypeInfo[]; advanceLimitHalalas: number | null }>('/hr/requests/types'),
+    queryFn: () => get<{ items: TypeInfo[]; advanceLimitHalalas: number | null; advanceInstalmentCapHalalas: number; advanceInstalmentCapBp: number }>('/hr/requests/types'),
     enabled: open,
   });
   const [type, setType] = useState<HrRequestType>(initialType ?? 'leave');
@@ -154,7 +154,7 @@ export function NewRequestDialog({
           </p>
         )}
 
-        <RequestFields type={type} form={form} advanceLimitUnset={types.data?.advanceLimitHalalas === null} />
+        <RequestFields type={type} form={form} advanceLimitUnset={types.data?.advanceLimitHalalas === null} advanceInstalmentCapHalalas={types.data?.advanceInstalmentCapHalalas} advanceInstalmentCapBp={types.data?.advanceInstalmentCapBp} />
 
         <Field label={t('requests.attachments')} hint={t('requests.attachmentsHint')}>
           <div className="space-y-1">

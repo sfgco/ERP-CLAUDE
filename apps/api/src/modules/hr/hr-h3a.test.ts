@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
-import { DEFAULT_APPRAISAL_TEMPLATE } from '@eayni/shared';
+import { DEFAULT_APPRAISAL_TEMPLATE, DEFAULT_PAYROLL_POLICY } from '@eayni/shared';
 import { activateAccount, auth, loginAs, makeDepartment, makeUser, testApp } from '../../test/helpers';
 import { setSetting } from '../../core/settings/service';
 import { SYSTEM_ACTOR } from '../../core/http/context';
@@ -11,14 +11,16 @@ import { Attachment } from '../../core/files/model';
 import { Task } from '../../core/tasks/model';
 import { CalendarEvent } from '../../core/calendar/model';
 import { Branch, Site } from '../../core/org/model';
+import { Holiday } from '../../core/dates/model';
+import { User } from '../../core/auth/model';
 import { riyadhDate } from '../../core/dates/businessDays';
 import { HrRequest } from './requests.model';
 import { AttendanceDay, AttendancePunch } from './attendance.model';
 import { addDays, computeDay, dayTime, weekdayOf } from './attendance.service';
 import { AdvanceSchedule, PayrollAdjustment, Payslip } from './payroll.model';
-import { attendanceWindow, currentPeriod, nextPeriod, previousPeriod } from './payroll.service';
+import { advanceInstalmentPlan, attendanceWindow, currentPeriod, gosiWageOf, nextPeriod, overtimeHourHalalas, previousPeriod } from './payroll.service';
 import { Appraisal, AppraisalCycle } from './performance.model';
-import { runAppraisalJobs } from './performance.service';
+import { appealDeadlineFrom, runAppraisalJobs } from './performance.service';
 import { Employee } from './model';
 
 const app = () => testApp();
@@ -83,7 +85,7 @@ async function setup() {
   const b = await mk('b@eayni.local', 'راشد', { gosiJoinDate: '2025-02-01', basicSalaryHalalas: 500_000, allowances: [] }, mgr.employeeId);
   const c = await mk('c@eayni.local', 'يوسف', { nationality: 'مصري', basicSalaryHalalas: 400_000, allowances: [], identity: { type: 'iqama', number: '2099887766', expiryDate: new Date(Date.now() + 400 * DAY) } }, mgr.employeeId);
   const other = await mk('other@eayni.local', 'فهد');
-  return { hr, hro, fm, fs, admin, dm, ops, mgr, a, b, c, other };
+  return { hr, hro, fm, fs, admin, dm, ops, mgr, a, b, c, other, mk };
 }
 
 describe('H3a §3.6 — payroll runs, deductions, GOSI, overtime, the Finance stage and segregation of duties', () => {
@@ -236,6 +238,116 @@ describe('H3a §3.6 — payroll runs, deductions, GOSI, overtime, the Finance st
     expect(sch!.instalments[0].period).toBe(nextPeriod(currentPeriod()));
     expect((await api(hr).get(`/hr/payroll/advances?employeeId=${a.employeeId}`)).body.items).toHaveLength(1);
   });
+
+  it('owner decisions 2026-11-24 — the overtime hour per art. 107 (actual hour + 50 % of the basic hour) and the GOSI wage with commissions, bounded to 1 500 – 45 000', async () => {
+    // The owner's example: basic 4 000 + allowances 2 000, 8 h → 25 + 8.33 = 33.33 SAR per overtime hour (never 6 000 × 1.5 ÷ 240 = 37.50).
+    expect(overtimeHourHalalas(400_000, 600_000, 8, 15_000)).toBeCloseTo(3333.33, 1);
+    expect(overtimeHourHalalas(500_000, 500_000, 8, 15_000)).toBeCloseTo(3125, 1); // no allowances → the old 150 % of basic
+    // GOSI wage: basic + housing + commissions (on by default), then the bounds.
+    const pol = DEFAULT_PAYROLL_POLICY;
+    expect(gosiWageOf(100_000, [{ type: 'عمولة', amountHalalas: 80_000 }, { type: 'نقل', amountHalalas: 50_000 }], pol)).toEqual({ wage: 180_000, bounded: null });
+    expect(gosiWageOf(100_000, [{ type: 'عمولة', amountHalalas: 80_000 }], { ...pol, gosiIncludeCommissions: false })).toEqual({ wage: 150_000, bounded: 'min' });
+    expect(gosiWageOf(5_000_000, [], pol)).toEqual({ wage: 4_500_000, bounded: 'max' });
+    expect(gosiWageOf(100_000, [], pol)).toEqual({ wage: 150_000, bounded: 'min' });
+    expect(gosiWageOf(100_000, [], { ...pol, gosiWageMinHalalas: null })).toEqual({ wage: 100_000, bounded: null });
+
+    const { hr, hro, mk } = await setup();
+    const period = previousPeriod(currentPeriod());
+    const win = attendanceWindow(period, 25);
+    const days = workdays(win.from, win.to);
+    // x: basic 4 000 + transport 2 000, one approved overtime hour actually worked → 33.33 SAR.
+    const x = await mk('x@eayni.local', 'سعد', { gosiJoinDate: '2020-01-01', basicSalaryHalalas: 400_000, allowances: [{ type: 'نقل', amountHalalas: 200_000 }] });
+    for (const [i, d] of days.entries()) {
+      await punch(x.employeeId, d, 'in', '08:00');
+      await punch(x.employeeId, d, 'out', i === 2 ? '17:02' : '16:00');
+    }
+    await HrRequest.create({ number: 'HRQ-TEST-00011', type: 'overtime', employeeId: x.employeeId, requesterUserId: x.userId, state: 'approved', stateEnteredAt: new Date(), details: { day: days[2], startTime: '16:00', endTime: '17:00', reason: 'جرد', compensation: 'pay' }, decision: { outcome: 'approved', at: new Date() }, route: { viaManager: true, finalApprover: 'manager' } });
+    // y: Sales rep with a monthly commission allowance → inside the GOSI wage; z: above the ceiling; w: under the floor.
+    const y = await mk('y@eayni.local', 'ريم', { gosiJoinDate: '2020-01-01', basicSalaryHalalas: 100_000, allowances: [{ type: 'عمولة', amountHalalas: 80_000 }] });
+    const z = await mk('z@eayni.local', 'ماجد', { gosiJoinDate: '2020-01-01', basicSalaryHalalas: 5_000_000, allowances: [] });
+    const w = await mk('w@eayni.local', 'نورة', { gosiJoinDate: '2020-01-01', basicSalaryHalalas: 100_000, allowances: [] });
+    const run = await api(hro).post('/hr/payroll', { period });
+    expect(run.status, JSON.stringify(run.body)).toBe(201);
+    const slips = (await api(hr).get(`/hr/payroll/${run.body._id}`)).body.payslips as { employeeId: string; earnings: { code: string; amountHalalas: number; minutes?: number }[]; gosiWageHalalas: number; gosiEmployeeHalalas: number; flags: string[] }[];
+    const of = (id: string) => slips.find((p) => p.employeeId === id)!;
+    const ot = of(x.employeeId).earnings.find((l) => l.code === 'overtime')!;
+    expect(ot.minutes).toBe(60);
+    expect(ot.amountHalalas).toBe(3333); // 33.33 SAR
+    expect(of(y.employeeId).gosiWageHalalas).toBe(180_000);
+    expect(of(y.employeeId).gosiEmployeeHalalas).toBe(Math.round(180_000 * 0.0975));
+    expect(of(y.employeeId).flags).not.toContain('gosi_wage_bounded');
+    expect(of(z.employeeId).gosiWageHalalas).toBe(4_500_000);
+    expect(of(z.employeeId).gosiEmployeeHalalas).toBe(Math.round(4_500_000 * 0.0975));
+    expect(of(z.employeeId).flags).toContain('gosi_wage_bounded');
+    expect(of(w.employeeId).gosiWageHalalas).toBe(150_000);
+    expect(of(w.employeeId).flags).toContain('gosi_wage_bounded');
+    // The commission switch is a setting: off → y falls to the floor.
+    await setSetting('hr.payroll.policy', { ...DEFAULT_PAYROLL_POLICY, gosiIncludeCommissions: false }, SYSTEM_ACTOR);
+    const re = await api(hro).post(`/hr/payroll/${run.body._id}/recompute`);
+    expect(re.status).toBe(200);
+    const y2 = (await Payslip.findOne({ runId: run.body._id, employeeId: y.employeeId }).lean())!;
+    expect(y2.gosiWageHalalas).toBe(150_000);
+    expect(y2.flags).toContain('gosi_wage_bounded');
+  });
+
+  it('owner decision 2026-11-24 — an advance instalment above 10 % of the wage needs the employee\'s written consent, otherwise the advance is split so no instalment exceeds 10 %', async () => {
+    expect(advanceInstalmentPlan(240_000, 1, 800_000, false, 1000)).toEqual({ instalments: 3, capHalalas: 80_000, flag: 'instalments_rescheduled' });
+    expect(advanceInstalmentPlan(240_000, 1, 800_000, true, 1000)).toEqual({ instalments: 1, capHalalas: 80_000, flag: 'instalment_consent_given' });
+    expect(advanceInstalmentPlan(90_000, 3, 800_000, false, 1000)).toEqual({ instalments: 3, capHalalas: 80_000, flag: null });
+    expect(advanceInstalmentPlan(250_000, 2, 800_000, false, 1000)).toEqual({ instalments: 4, capHalalas: 80_000, flag: 'instalments_rescheduled' }); // 125 000 > 80 000 → 4 × 62 500
+    const { hr, fm, mgr, a } = await setup(); // a: 6 000 + 1 500 + 500 = 8 000 SAR → cap 800 SAR
+    expect((await api(a.token).get('/hr/requests/types')).body).toMatchObject({ advanceInstalmentCapBp: 1000, advanceInstalmentCapHalalas: 80_000 });
+    // 2 400 SAR in one instalment without consent → split into 3 × 800, flagged; the employee's wish is kept for the record.
+    const split = await api(a.token).post('/hr/requests', { type: 'advance', details: { amountHalalas: 240_000, reason: 'علاج', instalments: 1 }, attachmentIds: [] });
+    expect(split.status, JSON.stringify(split.body)).toBe(201);
+    expect(split.body.details).toMatchObject({ instalments: 3, requestedInstalments: 1, instalmentHalalas: 80_000 });
+    expect(split.body.flags).toContain('instalments_rescheduled');
+    await api(mgr.token).post(`/hr/requests/${split.body._id}/transition`, { transition: 'approve' });
+    await api(hr).post(`/hr/requests/${split.body._id}/transition`, { transition: 'approve' });
+    expect((await api(fm).post(`/hr/requests/${split.body._id}/transition`, { transition: 'approve' })).body.state).toBe('approved');
+    const sch = (await AdvanceSchedule.findOne({ requestId: split.body._id }).lean())!;
+    expect(sch.instalments.map((i) => i.amountHalalas)).toEqual([80_000, 80_000, 80_000]);
+    // The same amount with the written consent stays one instalment, flagged for the record.
+    const consent = await api(a.token).post('/hr/requests', { type: 'advance', details: { amountHalalas: 240_000, reason: 'علاج', instalments: 1, scheduleConsent: true }, attachmentIds: [] });
+    expect(consent.status).toBe(201);
+    expect(consent.body.details).toMatchObject({ instalments: 1, instalmentHalalas: 240_000 });
+    expect(consent.body.flags).toContain('instalment_consent_given');
+    expect(consent.body.flags).not.toContain('instalments_rescheduled');
+    // Within the cap → nothing to flag.
+    const small = await api(a.token).post('/hr/requests', { type: 'advance', details: { amountHalalas: 90_000, reason: 'سفر', instalments: 3 }, attachmentIds: [] });
+    expect(small.body.details.instalments).toBe(3);
+    expect(small.body.flags.filter((f: string) => f.startsWith('instalment'))).toEqual([]);
+  });
+
+  it('art. 70 (owner decision 2026-11-24) — the fines deducted in one month are capped at 5 days of wage and the excess rolls into the next run as a fine', async () => {
+    const { hr, hro, a } = await setup();
+    const period = previousPeriod(currentPeriod());
+    const win = attendanceWindow(period, 25);
+    for (const d of workdays(win.from, win.to)) {
+      await punch(a.employeeId, d, 'in', '08:00');
+      await punch(a.employeeId, d, 'out', '16:00');
+    }
+    // Two upheld fines of 3 days each (80 000 halalas on an 8 000 SAR wage) = 6 days > the monthly cap of 5 days (133 333).
+    for (const n of [1, 2])
+      await PayrollAdjustment.create({ employeeId: a.employeeId, kind: 'deduction', amountHalalas: 80_000, reason: `خصم من الأجر DIS-TEST-0000${n}`, sourceType: 'disciplinary', sourceId: `dis-${n}`, createdByEmail: 'test' });
+    const run = await api(hro).post('/hr/payroll', { period });
+    expect(run.status).toBe(201);
+    const slip = (await api(hr).get(`/hr/payroll/${run.body._id}`)).body.payslips.find((p: { employeeId: string }) => p.employeeId === a.employeeId) as { deductions: { code: string; amountHalalas: number; note?: string }[]; flags: string[] };
+    const fines = slip.deductions.filter((l) => l.code === 'fine');
+    expect(fines).toHaveLength(2);
+    expect(fines.reduce((s, l) => s + l.amountHalalas, 0)).toBe(Math.round((5 * 800_000) / 30));
+    expect(fines[1].note).toContain('مرحّلة');
+    expect(slip.flags).toContain('fine_capped');
+    expect(slip.flags).toContain('fine_deferred:26667');
+    expect(slip.flags).not.toContain('deduction_capped'); // the art. 92 cap (50 %) is a different rule and was not hit
+    // At the HR approval the excess becomes a next-run fine (sourceType disciplinary, so it counts against next month's cap too).
+    await api(hro).post(`/hr/payroll/${run.body._id}/transition`, { transition: 'submit_for_review' });
+    expect((await api(hr).post(`/hr/payroll/${run.body._id}/transition`, { transition: 'hr_approve' })).body.state).toBe('at_finance');
+    const carried = await PayrollAdjustment.findOne({ employeeId: a.employeeId, sourceRunId: run.body._id }).lean();
+    expect(carried).toMatchObject({ kind: 'deduction', amountHalalas: 26_667, sourceType: 'disciplinary' });
+    expect(carried!.consumedByRunId ?? null).toBeNull(); // waits for the next run
+    expect(carried!.reason).toContain('المادة 70');
+  });
 });
 
 describe('H3a §3.7 — goals linked to KPIs, appraisal cycles, scoring, approval, improvement plans, disciplinary actions', () => {
@@ -319,19 +431,45 @@ describe('H3a §3.7 — goals linked to KPIs, appraisal cycles, scoring, approva
     expect(dash.body.performance).toMatchObject({ employeesWithGoals: 1, appraisalsTotal: 10, appraisalsDone: 2, appraisalCompletionBp: 2000 });
   });
 
-  it('disciplinary actions follow the ladder (provisional), need an approver other than the issuer, are delivered in writing, may be appealed, and a fine reaches payroll once upheld', async () => {
+  it('disciplinary actions follow the ladder (provisional), need an approver other than the issuer, are delivered in writing, may be appealed, and a fine reaches payroll once upheld — with the Labor Law windows the owner set on 2026-11-24', async () => {
     const { hr, hro, mgr, a, b } = await setup();
     const policy = await api(a.token).get('/hr/discipline/policy');
     expect(policy.body.provisional).toBe(true);
+    expect(policy.body).toMatchObject({ appealDays: 30, appealDecisionDays: 15, violationDiscoveryDays: 30, investigationSignDays: 30, maxFineDaysPerViolation: 5, maxFineDaysPerMonth: 5 });
     expect(policy.body.ladder.map((s: { code: string }) => s.code)).toContain('final_warning');
-    expect((await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'nope', violationDate: today(), description: 'تأخر متكرر خلال الأسبوع' })).status).toBe(400);
-    expect((await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: addDays(today(), -40), description: 'مخالفة قديمة اكتُشفت متأخراً' })).status).toBe(400); // art. 71
-    expect((await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'fine', fineDays: 6, violationDate: today(), description: 'خصم كبير' })).status).toBe(400); // art. 70
-    expect((await api(b.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: today(), description: 'زميل يحاول' })).status).toBe(403);
-    const w = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: addDays(today(), -2), description: 'تأخر متكرر ثلاث مرات هذا الأسبوع رغم التنبيه الشفهي' });
+    // The appeal window: 30 days excluding official holidays — a holiday inside it extends it by a day.
+    expect(appealDeadlineFrom('2026-01-01', 30, new Set())).toEqual(new Date('2026-01-31T23:59:59.999+03:00'));
+    expect(appealDeadlineFrom('2026-01-01', 30, new Set(['2026-01-10', '2026-01-11']))).toEqual(new Date('2026-02-02T23:59:59.999+03:00'));
+    const d = (n: number) => addDays(today(), n);
+    expect((await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'nope', violationDate: today(), discoveryDate: today(), description: 'تأخر متكرر خلال الأسبوع' })).status).toBe(400);
+    expect((await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-2), description: 'بلا تاريخ اكتشاف' })).status).toBe(400); // discoveryDate required
+    // Art. 71: the 30 days run from the *discovery*, not the violation.
+    const late = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-40), discoveryDate: d(-40), description: 'مخالفة قديمة اكتُشفت في يومها' });
+    expect(late.status).toBe(400);
+    expect(late.body.error.details.code).toBe('discovery_expired');
+    const discoveredLate = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-40), discoveryDate: d(-5), description: 'مخالفة قديمة اكتُشفت قبل خمسة أيام فقط' });
+    expect(discoveredLate.status, JSON.stringify(discoveredLate.body)).toBe(201);
+    expect((await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-3), discoveryDate: d(-5), description: 'اكتشاف قبل الوقوع' })).status).toBe(400);
+    // Art. 71: no penalty more than 30 days after the investigation ended.
+    const staleInv = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-50), discoveryDate: d(-45), investigationEndDate: d(-31), description: 'تحقيق انتهى قبل أكثر من ثلاثين يوماً' });
+    expect(staleInv.status).toBe(400);
+    expect(staleInv.body.error.details.code).toMatch(/discovery_expired|investigation_expired/);
+    // Art. 70: a single violation's fine ≤ 5 days.
+    const bigFine = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'fine', fineDays: 6, violationDate: today(), discoveryDate: today(), description: 'خصم كبير' });
+    expect(bigFine.status).toBe(400);
+    expect(bigFine.body.error.details.code).toBe('fine_over_max');
+    expect((await api(b.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: today(), discoveryDate: today(), description: 'زميل يحاول' })).status).toBe(403);
+    const w = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-2), discoveryDate: d(-1), investigationEndDate: today(), description: 'تأخر متكرر ثلاث مرات هذا الأسبوع رغم التنبيه الشفهي' });
     expect(w.status, JSON.stringify(w.body)).toBe(201);
     expect(w.body.number).toMatch(/^DIS-/);
     expect(w.body.state).toBe('draft');
+    expect(w.body).toMatchObject({ discoveryDate: d(-1), investigationEndDate: today() });
+    // One penalty per violation: a second action on the same employee and day is refused unless declared a separate violation.
+    const dup = await api(hro).post('/hr/discipline', { employeeId: a.employeeId, kind: 'written_notice', violationDate: d(-2), discoveryDate: d(-1), description: 'نفس المخالفة بجزاء ثانٍ' });
+    expect(dup.status).toBe(409);
+    expect(dup.body.error.details.code).toBe('violation_already_penalised');
+    const separate = await api(hro).post('/hr/discipline', { employeeId: a.employeeId, kind: 'written_notice', violationDate: d(-2), discoveryDate: d(-1), separateViolation: true, description: 'مخالفة أخرى مستقلة في نفس اليوم: ترك الموقع دون إذن' });
+    expect(separate.status).toBe(201);
     expect((await api(a.token).get('/hr/discipline')).body.items).toHaveLength(0); // nothing until delivered
     const submitted = await api(mgr.token).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'submit' });
     expect(submitted.body.state, JSON.stringify(submitted.body)).toBe('pending_approval');
@@ -339,17 +477,31 @@ describe('H3a §3.7 — goals linked to KPIs, appraisal cycles, scoring, approva
     expect((await api(mgr.token).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'approve' })).status).toBe(403); // issuer ≠ approver
     expect((await api(hro).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'approve' })).status).toBe(403); // approver role = hr_manager (Q11)
     expect((await api(hr).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'approve' })).body.state).toBe('approved');
-    expect((await api(hro).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'deliver' })).body.state).toBe('delivered');
+    // Delivery stamps the appeal deadline: 30 days excluding the official holidays inside the window (one here → 31 days).
+    await Holiday.create({ date: d(10), nameAr: 'عطلة تجريبية' });
+    const delivered = await api(hro).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'deliver' });
+    expect(delivered.body.state).toBe('delivered');
+    expect(riyadhDate(new Date(delivered.body.appealDeadline))).toBe(d(31));
     expect(await Notification.countDocuments({ userId: a.userId, type: 'discipline.delivered' })).toBe(1);
     const mine = await api(a.token).get('/hr/discipline');
     expect(mine.body.items).toHaveLength(1);
     expect(mine.body.items[0].evidenceAttachmentIds).toBeDefined();
     expect((await api(a.token).get(`/hr/discipline/${w.body._id}`)).body.actions.sort()).toEqual(['acknowledge', 'appeal']);
-    expect((await api(a.token).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'appeal', note: 'كان التأخر بسبب مهمة ميدانية موثقة' })).body.state).toBe('appealed');
+    // Art. 72: the appeal must be decided in writing within 15 days — a task with that deadline for the approver.
+    const appealed = await api(a.token).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'appeal', note: 'كان التأخر بسبب مهمة ميدانية موثقة' });
+    expect(appealed.body.state).toBe('appealed');
+    expect(riyadhDate(new Date(appealed.body.appealDecisionDueAt))).toBe(d(15));
     expect(await Notification.countDocuments({ type: 'discipline.appealed' })).toBe(1);
+    const hrUser = (await User.findOne({ email: 'hr@eayni.local' }).lean())!;
+    const task = (await Task.findOne({ 'source.type': 'disciplinary', 'source.id': w.body._id }).lean())!;
+    expect(task).toBeTruthy();
+    expect(String(task.assigneeId)).toBe(String(hrUser._id));
+    expect(riyadhDate(task.dueAt!)).toBe(d(15));
+    expect(task.priority).toBe('high');
     expect((await api(hr).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'uphold', note: 'المهمة لم تكن مسجلة' })).body.state).toBe('upheld');
+    expect((await Task.findById(task._id).lean())!.status).toBe('done'); // the written decision closes the task
     // A fine: 2 days of wage = 2 × 800000/30; it becomes a payroll deduction once upheld (here by the employee's acknowledgement).
-    const f = await api(hr).post('/hr/discipline', { employeeId: a.employeeId, kind: 'fine', fineDays: 2, violationDate: today(), description: 'إتلاف عهدة بسبب الإهمال الموثق في التقرير' });
+    const f = await api(hr).post('/hr/discipline', { employeeId: a.employeeId, kind: 'fine', fineDays: 2, violationDate: today(), discoveryDate: today(), description: 'إتلاف عهدة بسبب الإهمال الموثق في التقرير' });
     expect(f.status).toBe(201);
     expect(f.body.fineHalalas).toBe(Math.round((2 * 800_000) / 30));
     await api(hr).post(`/hr/discipline/${f.body._id}/transition`, { transition: 'submit' });
@@ -358,12 +510,13 @@ describe('H3a §3.7 — goals linked to KPIs, appraisal cycles, scoring, approva
     const hr2 = await loginAs('hr2@eayni.local');
     expect((await api(hr2).post(`/hr/discipline/${f.body._id}/transition`, { transition: 'approve' })).body.state).toBe('approved');
     await api(hro).post(`/hr/discipline/${f.body._id}/transition`, { transition: 'deliver' });
+    expect(await PayrollAdjustment.countDocuments({ sourceType: 'disciplinary', sourceId: f.body._id })).toBe(0); // nothing before it is final
     expect((await api(a.token).post(`/hr/discipline/${f.body._id}/transition`, { transition: 'acknowledge' })).body.state).toBe('upheld');
     const adj = await PayrollAdjustment.findOne({ sourceType: 'disciplinary', sourceId: f.body._id }).lean();
     expect(adj).toMatchObject({ kind: 'deduction', amountHalalas: f.body.fineHalalas });
     expect(await Outbox.countDocuments({ type: 'hr.discipline.payroll_effect' })).toBe(1);
-    const rep = await api(hr).post('/export', { resource: 'hr.discipline', fields: ['number', 'fullNameAr', 'kindLabelAr', 'stateAr', 'fine'], filters: {}, format: 'preview', limit: 50 });
-    expect(rep.body.total).toBe(2);
+    const rep = await api(hr).post('/export', { resource: 'hr.discipline', fields: ['number', 'fullNameAr', 'kindLabelAr', 'discoveryDate', 'stateAr', 'fine'], filters: {}, format: 'preview', limit: 50 });
+    expect(rep.body.total).toBe(4); // the late-discovered draft, the warning, the separate notice, the fine
   });
 });
 

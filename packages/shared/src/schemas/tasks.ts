@@ -12,6 +12,8 @@ export const TASK_SOURCE_TYPES = [
   // HR H3a [HR §3.7, §3.8]: a course appears in «مهامي»; an improvement plan's follow-up too.
   'training',
   'improvement_plan',
+  // The written decision on a disciplinary appeal within 15 days (art. 72) is a task with that deadline.
+  'disciplinary',
 ] as const;
 export type TaskSourceType = (typeof TASK_SOURCE_TYPES)[number];
 

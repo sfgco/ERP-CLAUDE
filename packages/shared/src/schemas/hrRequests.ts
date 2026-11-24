@@ -143,6 +143,12 @@ export const HR_REQUEST_DETAIL_SCHEMAS = {
     notes: z.string().trim().max(1000).optional(),
     /** Number of equal monthly instalments deducted by payroll (Q8: «count per the request»); default 1. */
     instalments: z.number().int().min(1).max(36).optional(),
+    /**
+     * Owner decision 2026-11-24: when the monthly instalment exceeds `hr.payroll.policy.advanceInstalmentCapBp` (10 %)
+     * of the wage, the employee must tick the written consent to the schedule; otherwise the server splits the
+     * advance into more instalments so none exceeds the cap (flag `instalments_rescheduled`).
+     */
+    scheduleConsent: z.boolean().optional(),
   }),
   data_update: z.object({
     changes: z

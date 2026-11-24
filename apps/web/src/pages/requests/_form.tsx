@@ -38,6 +38,9 @@ export function detailsFromForm(type: HrRequestType, v: RequestFormValues): Reco
         amountHalalas: Math.round(Number(s('amount')) * 100),
         reason: s('reason'),
         notes: s('notes') || undefined,
+        instalments: s('instalments') ? Number(s('instalments')) : undefined,
+        // Owner decision 2026-11-24: written consent to a schedule whose instalment exceeds 10 % of the wage.
+        scheduleConsent: v.scheduleConsent === true ? true : undefined,
       };
     case 'data_update':
       return {
@@ -112,6 +115,8 @@ export function formFromDetails(type: HrRequestType, d: Record<string, unknown>)
         amount: typeof d.amountHalalas === 'number' ? String(d.amountHalalas / 100) : '',
         reason: str('reason'),
         notes: str('notes'),
+        instalments: typeof d.requestedInstalments === 'number' ? String(d.requestedInstalments) : typeof d.instalments === 'number' ? String(d.instalments) : '',
+        scheduleConsent: d.scheduleConsent === true,
       });
       break;
     case 'data_update': {
@@ -154,10 +159,15 @@ export function RequestFields({
   type,
   form,
   advanceLimitUnset,
+  advanceInstalmentCapHalalas,
+  advanceInstalmentCapBp,
 }: {
   type: HrRequestType;
   form: UseFormReturn<RequestFormValues>;
   advanceLimitUnset?: boolean;
+  /** The requester's own cap on a monthly instalment (10 % of the wage) — from `/hr/requests/types`. */
+  advanceInstalmentCapHalalas?: number;
+  advanceInstalmentCapBp?: number;
 }) {
   const { t } = useTranslation();
   const sites = useSites();
@@ -166,6 +176,10 @@ export function RequestFields({
   const leaveType = form.watch('leaveType') as LeaveType | undefined;
   const kind = form.watch('kind');
   const scope = form.watch('scope');
+  const advAmount = Number(form.watch('amount') || 0);
+  const advInstalments = Math.max(1, Number(form.watch('instalments') || 1));
+  const advMonthly = advAmount > 0 ? Math.ceil((advAmount * 100) / advInstalments) : 0;
+  const advOverCap = !!advanceInstalmentCapHalalas && advMonthly > advanceInstalmentCapHalalas;
   const text = (name: string, label: string, req = true, props: Record<string, unknown> = {}): ReactNode => (
     <Field label={label} required={req} error={msg(errors, name) ?? (errors[name] ? required : undefined)}>
       <Input {...props} {...form.register(name, { required: req ? required : false })} />
@@ -319,6 +333,16 @@ export function RequestFields({
             dir: 'ltr',
           })}
           {advanceLimitUnset && <Alert kind="info">{t('requests.advanceLimitUnset')}</Alert>}
+          {text('instalments', t('requests.fields.instalments'), false, { type: 'number', min: 1, max: 36, step: 1, dir: 'ltr', placeholder: '1' })}
+          {advMonthly > 0 && (
+            <Alert kind={advOverCap ? 'warning' : 'info'}>
+              {t('requests.advanceInstalmentLine', { amount: (advMonthly / 100).toLocaleString('en-US', { maximumFractionDigits: 2 }), pct: (advanceInstalmentCapBp ?? 1000) / 100 })}
+              {advOverCap ? ` ${t('requests.advanceInstalmentOverCap', { pct: (advanceInstalmentCapBp ?? 1000) / 100 })}` : ''}
+            </Alert>
+          )}
+          <label className="flex items-start gap-2 text-sm">
+            <input type="checkbox" className="mt-1" {...form.register('scheduleConsent')} /> {t('requests.fields.scheduleConsent')}
+          </label>
           {reason()}
           <Field label={t('hr.notes')}>
             <Textarea rows={2} {...form.register('notes')} />

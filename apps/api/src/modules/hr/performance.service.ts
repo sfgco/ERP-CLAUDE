@@ -15,7 +15,7 @@ import { notify } from '../../core/notifications/service';
 import { publish } from '../../core/outbox/service';
 import { getSetting, getSettingMeta } from '../../core/settings/service';
 import { applyTransition, availableTransitions, getWorkflow } from '../../core/workflow/engine';
-import { riyadhDate } from '../../core/dates/businessDays';
+import { loadHolidaySet, riyadhDate, riyadhDayEndOf } from '../../core/dates/businessDays';
 import { kpiDefinition } from '../../core/kpi/registry';
 import { Task } from '../../core/tasks/model';
 import { User, type UserDoc } from '../../core/auth/model';
@@ -367,6 +367,20 @@ export async function closeImprovementPlan(id: string, state: 'completed' | 'not
 // ==================================================================================================
 // Disciplinary actions [HR §3.7 «تسجيل الإنذارات والإجراءات الإدارية وفق الصلاحيات»; arts. 66–73]
 // ==================================================================================================
+/**
+ * Art. 72 (owner decision 2026-11-24): the appeal window is `days` days from the written notice, official holidays
+ * excluded — each holiday inside the window extends it by a day. Returns the end of the last day (Riyadh).
+ */
+export function appealDeadlineFrom(deliveredDay: string, days: number, holidays: Set<string>): Date {
+  let d = deliveredDay;
+  let counted = 0;
+  while (counted < days) {
+    d = addDays(d, 1);
+    if (!holidays.has(d)) counted++;
+  }
+  return riyadhDayEndOf(d);
+}
+
 export async function disciplinePolicy(): Promise<{ policy: DisciplinePolicy; provisional: boolean }> {
   const m = await getSettingMeta('hr.discipline');
   return { policy: m.value, provisional: m.provisional };
@@ -396,12 +410,26 @@ export async function createDisciplinary(input: CreateDisciplinaryInput, user: U
   const roles = user.roles.map((r) => r.role);
   const mayIssue = policy.issuers.some((i) => (i === 'direct_manager' ? managerUserId === String(user._id) : roles.includes(i)));
   if (!mayIssue) throw forbidden('إصدار الإجراء من صلاحية المدير المباشر أو الموارد البشرية');
-  if (input.violationDate < addDays(riyadhDate(new Date()), -policy.violationDiscoveryDays))
-    throw badRequest(`لا يُتخذ جزاء على مخالفة مضى على اكتشافها أكثر من ${policy.violationDiscoveryDays} يوماً (المادة 71)`);
-  if (input.violationDate > riyadhDate(new Date())) throw badRequest('تاريخ المخالفة في المستقبل');
+  const today = riyadhDate(new Date());
+  if (input.violationDate > today) throw badRequest('تاريخ المخالفة في المستقبل');
+  if (input.discoveryDate > today) throw badRequest('تاريخ اكتشاف المخالفة في المستقبل');
+  if (input.discoveryDate < input.violationDate) throw badRequest('تاريخ الاكتشاف قبل تاريخ المخالفة');
+  // Art. 71 (owner decision 2026-11-24): the 30 days run from the *discovery* of the violation, not from the violation itself.
+  if (input.discoveryDate < addDays(today, -policy.violationDiscoveryDays))
+    throw badRequest(`لا يُتخذ جزاء على مخالفة مضى على اكتشافها أكثر من ${policy.violationDiscoveryDays} يوماً (المادة 71)`, { code: 'discovery_expired' });
+  if (input.investigationEndDate) {
+    if (input.investigationEndDate < input.discoveryDate) throw badRequest('انتهاء التحقيق قبل اكتشاف المخالفة');
+    if (input.investigationEndDate > today) throw badRequest('تاريخ انتهاء التحقيق في المستقبل');
+    if (input.investigationEndDate < addDays(today, -policy.investigationSignDays))
+      throw badRequest(`لا يُوقَّع الجزاء بعد مرور ${policy.investigationSignDays} يوماً من انتهاء التحقيق وثبوت المخالفة (المادة 71)`, { code: 'investigation_expired' });
+  }
+  // One penalty per violation (owner decision 2026-11-24): a second action on the same employee and day needs an explicit «مخالفة مستقلة».
+  if (!input.separateViolation && (await DisciplinaryAction.exists({ employeeId: employee._id, violationDate: input.violationDate, state: { $ne: 'withdrawn' }, deletedAt: null })))
+    throw conflict('يوجد إجراء على مخالفة لهذا الموظف في نفس اليوم؛ جزاء واحد فقط لكل مخالفة. علّم «مخالفة أخرى مستقلة» إن كانت مخالفة مختلفة', { code: 'violation_already_penalised' });
   if (step.payrollEffect === 'fine') {
     if (!input.fineDays || input.fineDays <= 0) throw badRequest('حدّد أيام الخصم');
-    if (step.maxFineDaysPerMonth !== null && input.fineDays > step.maxFineDaysPerMonth) throw badRequest(`الحد الأقصى للخصم ${step.maxFineDaysPerMonth} أيام في الشهر (المادة 70)`);
+    const maxDays = Math.min(step.maxFineDaysPerMonth ?? Infinity, policy.maxFineDaysPerViolation);
+    if (input.fineDays > maxDays) throw badRequest(`غرامة المخالفة الواحدة لا تتجاوز أجر ${maxDays} أيام (المادة 70)`, { code: 'fine_over_max' });
   }
   if (step.payrollEffect === 'suspension' && step.maxSuspensionDays !== null && (input.suspensionDays ?? 0) > step.maxSuspensionDays)
     throw badRequest(`الحد الأقصى للإيقاف ${step.maxSuspensionDays} أيام (المادة 70)`);
@@ -418,6 +446,9 @@ export async function createDisciplinary(input: CreateDisciplinaryInput, user: U
     fineHalalas: step.payrollEffect === 'fine' ? Math.round(((input.fineDays ?? 0) * total) / 30) : undefined,
     suspensionDays: step.payrollEffect === 'suspension' ? input.suspensionDays : undefined,
     violationDate: input.violationDate,
+    discoveryDate: input.discoveryDate,
+    investigationEndDate: input.investigationEndDate,
+    separateViolation: input.separateViolation,
     description: input.description,
     evidenceAttachmentIds: input.evidenceAttachmentIds,
     issuedBy: user._id,
@@ -445,9 +476,15 @@ export async function transitionDisciplinary(d: DisciplinaryActionDoc, code: str
   const { policy } = await disciplinePolicy();
   const rel = await relationsForDiscipline(opts.user, d, policy);
   if (['approve', 'reject', 'uphold', 'withdraw'].includes(code) && String(d.issuedBy) === String(opts.user._id) && !opts.actor.system) throw forbidden('لا يعتمد مُصدر الإجراء إجراءه (فصل المهام)');
-  if (code === 'appeal' && d.appealDeadline && d.appealDeadline < new Date()) throw badRequest(`انتهت مهلة الاعتراض (${policy.appealDays} يوماً)`);
+  if (code === 'appeal' && d.appealDeadline && d.appealDeadline < new Date()) throw badRequest(`انتهت مهلة التظلم (${policy.appealDays} يوماً عدا العطل الرسمية)`);
   const now = new Date();
+  const today = riyadhDate(now);
+  // Art. 71: the penalty is signed (approved) within `investigationSignDays` of the investigation's end.
+  if (code === 'approve' && d.investigationEndDate && d.investigationEndDate < addDays(today, -policy.investigationSignDays))
+    throw badRequest(`لا يُوقَّع الجزاء بعد مرور ${policy.investigationSignDays} يوماً من انتهاء التحقيق (المادة 71)`, { code: 'investigation_expired' });
+  const holidays = code === 'deliver' ? await loadHolidaySet() : new Set<string>();
   const fromState = d.state;
+  const employeeForTask = code === 'appeal' ? await Employee.findById(d.employeeId).select('userId fullNameAr departmentId').lean() : null;
   await withTransaction(async (session) => {
     const r = await applyTransition({
       def,
@@ -462,14 +499,38 @@ export async function transitionDisciplinary(d: DisciplinaryActionDoc, code: str
       persist: async (fields) => {
         const set: Record<string, unknown> = { ...fields };
         if (code === 'approve') Object.assign(set, { approvedBy: opts.user._id, approvedAt: now });
-        if (code === 'deliver') Object.assign(set, { deliveredAt: now, deliveredBy: opts.user._id, appealDeadline: new Date(now.getTime() + policy.appealDays * 86_400_000) });
+        if (code === 'deliver') Object.assign(set, { deliveredAt: now, deliveredBy: opts.user._id, appealDeadline: appealDeadlineFrom(today, policy.appealDays, holidays) });
         if (code === 'acknowledge') set.employeeAck = { at: now, note: opts.note };
-        if (code === 'appeal') set.appeal = { at: now, note: opts.note };
+        if (code === 'appeal') Object.assign(set, { appeal: { at: now, note: opts.note }, appealDecisionDueAt: riyadhDayEndOf(addDays(today, policy.appealDecisionDays)) });
         if (code === 'uphold' && fromState === 'appealed') Object.assign(set, { 'appeal.outcome': 'upheld', 'appeal.decidedBy': opts.user._id, 'appeal.decidedAt': now, 'appeal.decisionNote': opts.note });
         if (code === 'withdraw' && fromState === 'appealed') Object.assign(set, { 'appeal.outcome': 'withdrawn', 'appeal.decidedBy': opts.user._id, 'appeal.decidedAt': now, 'appeal.decisionNote': opts.note });
         return (await DisciplinaryAction.updateOne({ _id: d._id, state: fromState }, { $set: set }, { session })).modifiedCount === 1;
       },
     });
+    // Art. 72 (owner decision 2026-11-24): the appeal must be decided in writing within `appealDecisionDays` — a task with that deadline for the approver.
+    if (code === 'appeal') {
+      const [task] = await Task.create(
+        [
+          {
+            number: await nextNumber('task', session),
+            title: `البت في تظلم على ${d.kindLabelAr} ${d.number}`,
+            description: `تظلّم ${employeeForTask?.fullNameAr ?? ''} على الإجراء ${d.number}: ${opts.note ?? ''}\nيجب البت فيه كتابياً خلال ${policy.appealDecisionDays} يوماً (المادة 72).`,
+            assignerId: employeeForTask?.userId ?? opts.user._id,
+            assigneeId: d.approvedBy ?? null,
+            departmentId: d.departmentId,
+            priority: 'high',
+            status: 'new',
+            startAt: now,
+            dueAt: riyadhDayEndOf(addDays(today, policy.appealDecisionDays)),
+            source: { type: 'disciplinary', id: String(d._id), label: d.number },
+          },
+        ],
+        { session },
+      );
+      await DisciplinaryAction.updateOne({ _id: d._id }, { $set: { appealTaskId: task._id } }, { session });
+    }
+    if (fromState === 'appealed' && (code === 'uphold' || code === 'withdraw') && d.appealTaskId)
+      await Task.updateOne({ _id: d.appealTaskId, status: { $nin: ['done', 'cancelled'] } }, { $set: { status: 'done', progressPercent: 100, completedAt: now } }, { session });
     // A fine reaches payroll only once the action is final (upheld) — «التعديل يدخل في المسير التالي».
     if (r.to === 'upheld' && d.payrollEffect === 'fine' && d.fineHalalas && !d.payrollAdjustmentId) {
       const [adj] = await PayrollAdjustment.create(
@@ -486,8 +547,8 @@ export async function transitionDisciplinary(d: DisciplinaryActionDoc, code: str
   const employee = await Employee.findById(doc.employeeId).select('userId fullNameAr').lean();
   const approvers = (await User.find({ 'roles.role': policy.approverRole, status: 'active' }).select('_id').lean()).map((u) => String(u._id));
   if (code === 'submit') await notify({ userIds: approvers, type: 'discipline.pending', bodyAr: `${doc.kindLabelAr} — ${employee?.fullNameAr ?? ''} (${doc.number})`, link: `/hr/discipline/${doc._id}` });
-  if (code === 'deliver' && employee?.userId) await notify({ userIds: [String(employee.userId)], type: 'discipline.delivered', bodyAr: `${doc.kindLabelAr} (${doc.number}) — يمكنك الاعتراض خلال ${policy.appealDays} يوماً`, link: '/me/performance' });
-  if (code === 'appeal') await notify({ userIds: approvers, type: 'discipline.appealed', bodyAr: `${doc.number} — ${employee?.fullNameAr ?? ''}: ${opts.note ?? ''}`, link: `/hr/discipline/${doc._id}` });
+  if (code === 'deliver' && employee?.userId) await notify({ userIds: [String(employee.userId)], type: 'discipline.delivered', bodyAr: `${doc.kindLabelAr} (${doc.number}) — يمكنك التظلم خلال ${policy.appealDays} يوماً عدا العطل الرسمية (حتى ${riyadhDate(doc.appealDeadline!)})`, link: '/me/performance' });
+  if (code === 'appeal') await notify({ userIds: approvers, type: 'discipline.appealed', bodyAr: `${doc.number} — ${employee?.fullNameAr ?? ''}: ${opts.note ?? ''} — يُبت فيه كتابياً قبل ${riyadhDate(doc.appealDecisionDueAt!)}`, link: `/hr/discipline/${doc._id}` });
   return doc;
 }
 

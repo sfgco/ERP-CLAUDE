@@ -5,9 +5,11 @@ import { fieldErrorsFrom } from '@/lib/errors';
 
 describe('C19 — one form for new and resubmitted requests', () => {
   it('maps form values to request details and back for every type', () => {
-    const advance = detailsFromForm('advance', { amount: '1500.50', reason: 'ظرف طارئ', notes: '' });
-    expect(advance).toEqual({ amountHalalas: 150_050, reason: 'ظرف طارئ', notes: undefined });
-    expect(formFromDetails('advance', advance)).toMatchObject({ amount: '1500.5', reason: 'ظرف طارئ' });
+    const advance = detailsFromForm('advance', { amount: '1500.50', reason: 'ظرف طارئ', notes: '', instalments: '3', scheduleConsent: true });
+    expect(advance).toEqual({ amountHalalas: 150_050, reason: 'ظرف طارئ', notes: undefined, instalments: 3, scheduleConsent: true });
+    expect(formFromDetails('advance', advance)).toMatchObject({ amount: '1500.5', reason: 'ظرف طارئ', instalments: '3', scheduleConsent: true });
+    // The server may have split the advance (`instalments`) — the form shows what the employee asked for.
+    expect(formFromDetails('advance', { ...advance, instalments: 5, requestedInstalments: 1, scheduleConsent: undefined })).toMatchObject({ instalments: '1', scheduleConsent: false });
     const leave = detailsFromForm('leave', {
       leaveType: 'annual',
       startDate: '2026-12-01',

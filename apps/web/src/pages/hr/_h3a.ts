@@ -180,10 +180,14 @@ export interface DisciplinaryRow {
   fineHalalas?: number;
   suspensionDays?: number;
   violationDate: string;
+  discoveryDate?: string;
+  investigationEndDate?: string;
+  separateViolation?: boolean;
   description: string;
   state: DisciplinaryState;
   deliveredAt?: string;
   appealDeadline?: string;
+  appealDecisionDueAt?: string;
   appeal?: { at?: string; note?: string; outcome?: string; decisionNote?: string };
   employeeAck?: { at?: string; note?: string };
   employee?: { fullNameAr: string; employeeNumber: string };

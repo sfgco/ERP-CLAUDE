@@ -3,7 +3,7 @@ import { Link, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { DISCIPLINARY_STATES } from '@eayni/shared';
-import { get, post } from '@/lib/api';
+import { ApiError, get, post } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { usePrefs } from '@/lib/preferences';
 import { riyadhToday } from '@/lib/dates';
@@ -18,7 +18,11 @@ import { useTeam } from '../tasks/_data';
 interface Policy {
   ladder: { code: string; labelAr: string; order: number; payrollEffect: string; maxFineDaysPerMonth: number | null; maxSuspensionDays: number | null; articleAr?: string }[];
   appealDays: number;
+  appealDecisionDays: number;
   violationDiscoveryDays: number;
+  investigationSignDays: number;
+  maxFineDaysPerViolation: number;
+  maxFineDaysPerMonth: number;
   provisional: boolean;
 }
 
@@ -34,15 +38,33 @@ export function DisciplinePage() {
   const policy = useQuery({ queryKey: ['discipline', 'policy'], queryFn: () => get<Policy>('/hr/discipline/policy') });
   const [state, setState] = useState('');
   const q = useQuery({ queryKey: ['discipline', 'list', state], queryFn: () => get<{ items: DisciplinaryRow[] }>(`/hr/discipline${state ? `?state=${state}` : ''}`) });
-  const [form, setForm] = useState<{ employeeId: string; kind: string; violationDate: string; description: string; fineDays: string; suspensionDays: string; evidence: { attachmentId: string; fileName: string }[] } | null>(null);
+  const [form, setForm] = useState<{ employeeId: string; kind: string; violationDate: string; discoveryDate: string; investigationEndDate: string; separateViolation: boolean; description: string; fineDays: string; suspensionDays: string; evidence: { attachmentId: string; fileName: string }[] } | null>(null);
+  const [duplicate, setDuplicate] = useState(false);
   const create = useMutation({
-    mutationFn: () => post<DisciplinaryRow>('/hr/discipline', { employeeId: form!.employeeId, kind: form!.kind, violationDate: form!.violationDate, description: form!.description, fineDays: form!.fineDays ? Number(form!.fineDays) : undefined, suspensionDays: form!.suspensionDays ? Number(form!.suspensionDays) : undefined, evidenceAttachmentIds: form!.evidence.map((a) => a.attachmentId) }),
+    mutationFn: () =>
+      post<DisciplinaryRow>('/hr/discipline', {
+        employeeId: form!.employeeId,
+        kind: form!.kind,
+        violationDate: form!.violationDate,
+        discoveryDate: form!.discoveryDate,
+        investigationEndDate: form!.investigationEndDate || undefined,
+        separateViolation: form!.separateViolation || undefined,
+        description: form!.description,
+        fineDays: form!.fineDays ? Number(form!.fineDays) : undefined,
+        suspensionDays: form!.suspensionDays ? Number(form!.suspensionDays) : undefined,
+        evidenceAttachmentIds: form!.evidence.map((a) => a.attachmentId),
+      }),
     onSuccess: (d) => {
       toast(t('discipline.created', { number: d.number }));
       setForm(null);
+      setDuplicate(false);
       qc.invalidateQueries({ queryKey: ['discipline'] });
     },
-    onError: (e) => toast(errorMessage(e), 'error'),
+    onError: (e) => {
+      // One penalty per violation: the server refuses a second action on the same day unless it is declared separate.
+      if (e instanceof ApiError && e.status === 409) setDuplicate(true);
+      toast(errorMessage(e), 'error');
+    },
   });
   const step = policy.data?.ladder.find((s) => s.code === form?.kind);
   const candidates = can('hr.discipline', 'edit') ? lk.employees : (team.data?.items ?? []).map((m) => ({ _id: m._id, fullNameAr: m.fullNameAr, employeeNumber: m.employeeNumber }));
@@ -50,8 +72,8 @@ export function DisciplinePage() {
     <>
       <PageHeader
         title={t('discipline.title')}
-        subtitle={t('discipline.hint', { days: policy.data?.appealDays ?? 15, discovery: policy.data?.violationDiscoveryDays ?? 30 })}
-        actions={can('hr.discipline', 'create') && <Button onClick={() => setForm({ employeeId: '', kind: policy.data?.ladder[0]?.code ?? '', violationDate: riyadhToday(), description: '', fineDays: '', suspensionDays: '', evidence: [] })}>{t('discipline.new')}</Button>}
+        subtitle={t('discipline.hint', { days: policy.data?.appealDays ?? 30, decision: policy.data?.appealDecisionDays ?? 15, discovery: policy.data?.violationDiscoveryDays ?? 30, fineDays: policy.data?.maxFineDaysPerViolation ?? 5 })}
+        actions={can('hr.discipline', 'create') && <Button onClick={() => setForm({ employeeId: '', kind: policy.data?.ladder[0]?.code ?? '', violationDate: riyadhToday(), discoveryDate: riyadhToday(), investigationEndDate: '', separateViolation: false, description: '', fineDays: '', suspensionDays: '', evidence: [] })}>{t('discipline.new')}</Button>}
       />
       {policy.data?.provisional && <Alert kind="warning">{t('discipline.provisional')}</Alert>}
       <Card className="mt-3" title={t('discipline.ladder')}>
@@ -135,8 +157,8 @@ export function DisciplinePage() {
               </Select>
             </Field>
             {step?.payrollEffect === 'fine' && (
-              <Field label={t('discipline.fineDays')} required hint={t('discipline.fineMax', { n: step.maxFineDaysPerMonth ?? 5 })}>
-                <Input type="number" dir="ltr" min={0.5} step={0.5} max={step.maxFineDaysPerMonth ?? 31} value={form.fineDays} onChange={(e) => setForm({ ...form, fineDays: e.target.value })} required />
+              <Field label={t('discipline.fineDays')} required hint={t('discipline.fineMax', { n: Math.min(step.maxFineDaysPerMonth ?? 31, policy.data?.maxFineDaysPerViolation ?? 5), month: policy.data?.maxFineDaysPerMonth ?? 5 })}>
+                <Input type="number" dir="ltr" min={0.5} step={0.5} max={Math.min(step.maxFineDaysPerMonth ?? 31, policy.data?.maxFineDaysPerViolation ?? 5)} value={form.fineDays} onChange={(e) => setForm({ ...form, fineDays: e.target.value })} required />
               </Field>
             )}
             {step?.payrollEffect === 'suspension' && (
@@ -144,9 +166,24 @@ export function DisciplinePage() {
                 <Input type="number" dir="ltr" min={1} max={step.maxSuspensionDays ?? 31} value={form.suspensionDays} onChange={(e) => setForm({ ...form, suspensionDays: e.target.value })} required />
               </Field>
             )}
-            <Field label={t('discipline.violationDate')} required>
-              <Input type="date" dir="ltr" value={form.violationDate} onChange={(e) => setForm({ ...form, violationDate: e.target.value })} required />
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('discipline.violationDate')} required>
+                <Input type="date" dir="ltr" value={form.violationDate} onChange={(e) => setForm({ ...form, violationDate: e.target.value })} required />
+              </Field>
+              <Field label={t('discipline.discoveryDate')} required hint={t('discipline.discoveryHint', { n: policy.data?.violationDiscoveryDays ?? 30 })}>
+                <Input type="date" dir="ltr" value={form.discoveryDate} min={form.violationDate} onChange={(e) => setForm({ ...form, discoveryDate: e.target.value })} required />
+              </Field>
+            </div>
+            <Field label={t('discipline.investigationEndDate')} hint={t('discipline.investigationHint', { n: policy.data?.investigationSignDays ?? 30 })}>
+              <Input type="date" dir="ltr" value={form.investigationEndDate} min={form.discoveryDate} onChange={(e) => setForm({ ...form, investigationEndDate: e.target.value })} />
             </Field>
+            {duplicate && (
+              <Alert kind="warning">
+                <label className="flex items-start gap-2">
+                  <input type="checkbox" className="mt-1" checked={form.separateViolation} onChange={(e) => setForm({ ...form, separateViolation: e.target.checked })} /> {t('discipline.separateViolation')}
+                </label>
+              </Alert>
+            )}
             <Field label={t('discipline.description')} required>
               <Textarea rows={3} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required minLength={5} />
             </Field>
@@ -235,6 +272,24 @@ export function DisciplinaryActionPage() {
                   <dd className="tabular">{d.suspensionDays}</dd>
                 </>
               ) : null}
+              {d.discoveryDate && (
+                <>
+                  <dt className="text-slate-500">{t('discipline.discoveryDate')}</dt>
+                  <dd className="tabular">{formatDate(d.discoveryDate)}</dd>
+                </>
+              )}
+              {d.investigationEndDate && (
+                <>
+                  <dt className="text-slate-500">{t('discipline.investigationEndDate')}</dt>
+                  <dd className="tabular">{formatDate(d.investigationEndDate)}</dd>
+                </>
+              )}
+              {d.separateViolation && (
+                <>
+                  <dt className="text-slate-500">{t('discipline.separateViolationShort')}</dt>
+                  <dd>{t('common.yes')}</dd>
+                </>
+              )}
               {d.deliveredAt && (
                 <>
                   <dt className="text-slate-500">{t('discipline.deliveredAt')}</dt>
@@ -245,6 +300,12 @@ export function DisciplinaryActionPage() {
                 <>
                   <dt className="text-slate-500">{t('discipline.appealDeadline')}</dt>
                   <dd className="tabular">{formatDate(d.appealDeadline)}</dd>
+                </>
+              )}
+              {d.appealDecisionDueAt && d.state === 'appealed' && (
+                <>
+                  <dt className="text-slate-500">{t('discipline.appealDecisionDue')}</dt>
+                  <dd className="tabular text-amber-700">{formatDate(d.appealDecisionDueAt)}</dd>
                 </>
               )}
             </dl>

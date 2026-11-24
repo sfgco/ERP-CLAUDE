@@ -141,6 +141,16 @@ export const payrollPolicySchema = z.object({
   allowanceTypes: z.array(z.string().trim().min(1).max(60)).max(30),
   /** The allowance types inside the GOSI contribution wage (basic + housing by the GOSI rules). */
   gosiWageAllowanceTypes: z.array(z.string().trim().min(1).max(60)).max(30),
+  /**
+   * Owner decision 2026-11-24: the monthly commissions of Sales staff enter the contribution wage (on by default).
+   * Commissions are read from the employee's allowances whose type is in `gosiCommissionAllowanceTypes`
+   * (the salary master carries them as a monthly amount until the Sales commission run exists).
+   */
+  gosiIncludeCommissions: z.boolean(),
+  gosiCommissionAllowanceTypes: z.array(z.string().trim().min(1).max(60)).max(30),
+  /** GOSI contribution wage bounds (owner decision: 1 500 – 45 000 SAR), as settings in halalas; null = no bound. */
+  gosiWageMinHalalas: z.number().int().min(0).nullable(),
+  gosiWageMaxHalalas: z.number().int().min(0).nullable(),
   /** Nationality value on the employee file that means Saudi (the file stores free text). */
   saudiNationalityValues: z.array(z.string().trim().min(1).max(60)).min(1),
   /** Absence day = monthly wage ÷ 30 (Q8) or ÷ the month's working days. */
@@ -149,8 +159,16 @@ export const payrollPolicySchema = z.object({
   absenceBase: z.enum(['basic', 'total']),
   /** Lateness deduction (Q8: none until HR decides); `per_minute` prices each counted minute at the hourly wage. */
   latenessDeduction: z.enum(['none', 'per_minute']),
-  /** Overtime hourly base: basic ÷ 30 ÷ daily hours; rate from `hr.overtime.rateBp` (art. 107). */
+  /**
+   * Overtime hour (art. 107, owner decision 2026-11-24): actual wage ÷ 30 ÷ daily hours + (rateBp − 100 %) × basic ÷ 30 ÷ daily
+   * hours — i.e. the hour of the *actual* wage plus a 50 % premium on the *basic* hour; never actual × 1.5.
+   */
   dailyHours: z.number().min(4).max(12),
+  /**
+   * Advance instalments (owner decision 2026-11-24): an instalment above this share of the monthly wage needs the
+   * employee's written consent on the request; without it the advance is split so no instalment exceeds the share.
+   */
+  advanceInstalmentCapBp: z.number().int().min(0).max(10_000),
   /** Total deductions (excluding GOSI) ≤ this share of the wage (art. 92: 50 %); the excess rolls into the next run. */
   deductionCapBp: z.number().int().min(0).max(10_000),
   /** Attendance window of a period: from the day after last month's cut-off to this month's cut-off (Q8: 25). */
@@ -163,13 +181,18 @@ export const payrollPolicySchema = z.object({
 });
 export type PayrollPolicy = z.infer<typeof payrollPolicySchema>;
 export const DEFAULT_PAYROLL_POLICY: PayrollPolicy = {
-  allowanceTypes: ['سكن', 'نقل', 'أخرى'],
+  allowanceTypes: ['سكن', 'نقل', 'عمولة', 'أخرى'],
   gosiWageAllowanceTypes: ['سكن'],
+  gosiIncludeCommissions: true,
+  gosiCommissionAllowanceTypes: ['عمولة', 'عمولات', 'عمولة مبيعات'],
+  gosiWageMinHalalas: 150_000,
+  gosiWageMaxHalalas: 4_500_000,
   saudiNationalityValues: ['سعودي', 'سعودية', 'السعودية', 'Saudi'],
   absenceDayFormula: 'monthly_over_30',
   absenceBase: 'total',
   latenessDeduction: 'none',
   dailyHours: 8,
+  advanceInstalmentCapBp: 1000,
   deductionCapBp: 5000,
   cutoffDay: 25,
   payDay: 27,

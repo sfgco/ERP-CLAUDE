@@ -172,6 +172,10 @@ const disciplinaryActionSchema = new Schema(
     fineHalalas: { type: Number },
     suspensionDays: { type: Number },
     violationDate: { type: String, required: true },
+    /** Art. 71 (owner decision 2026-11-24): the 30 days run from the discovery, and the penalty is signed within 30 days of the investigation's end. */
+    discoveryDate: { type: String },
+    investigationEndDate: { type: String },
+    separateViolation: { type: Boolean },
     description: { type: String, required: true },
     evidenceAttachmentIds: { type: [Schema.Types.ObjectId], default: [] },
     issuedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
@@ -185,6 +189,9 @@ const disciplinaryActionSchema = new Schema(
     deliveredAt: { type: Date },
     deliveredBy: { type: Schema.Types.ObjectId, ref: 'User' },
     appealDeadline: { type: Date },
+    /** Art. 72: the written decision on an appeal is due within `appealDecisionDays`; `appealTaskId` is the approver's task. */
+    appealDecisionDueAt: { type: Date },
+    appealTaskId: { type: Schema.Types.ObjectId, ref: 'Task' },
     employeeAck: { at: Date, note: String },
     appeal: { at: Date, note: String, outcome: String, decidedBy: Schema.Types.ObjectId, decidedAt: Date, decisionNote: String },
     payrollAdjustmentId: { type: Schema.Types.ObjectId, ref: 'PayrollAdjustment' },

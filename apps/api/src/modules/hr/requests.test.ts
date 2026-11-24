@@ -196,7 +196,10 @@ describe('HR self-service requests [HR §3.5, EP §11, DECISIONS §5]', () => {
       type: 'advance',
       details: { amountHalalas: 500_000, reason: 'إجازة سنوية' },
     });
-    expect(big.body.flags).toEqual(['over_limit']);
+    expect(big.body.flags).toContain('over_limit');
+    // Owner decision 2026-11-24: 5 000 SAR in one instalment on an 11 000 SAR wage exceeds 10 % → split into 5 × 1 000 without consent.
+    expect(big.body.flags).toContain('instalments_rescheduled');
+    expect(big.body.details).toMatchObject({ instalments: 5, requestedInstalments: 1, instalmentHalalas: 100_000 });
   });
 
   it("a transfer moves requests waiting for the old manager to the new one, logged in the stage log; scope hides others' requests", async () => {

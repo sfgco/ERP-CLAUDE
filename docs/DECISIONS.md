@@ -2,7 +2,7 @@
 
 Answers from the product owner (Saud, IT) that settle what `docs/SPECS.md` leaves open or where two specs disagree. This file **overrides the defaults in `CLAUDE.md`**. Every decision cites the spec sections it settles. Dates are Gregorian.
 
-Last updated: 2026-11-24 (H3a).
+Last updated: 2026-11-24 (H3a review).
 
 ## 1. Infrastructure and accounts — not decided yet
 - AWS account, hosting region and data-residency requirement, MongoDB Atlas cluster, staging domain, email sending domain and brand assets are **not decided**.
@@ -415,6 +415,30 @@ Also requested for H3a: **the lateness rule becomes a provisional setting** — 
 - **Permissions:** resources `hr.payroll`, `hr.payslips`, `finance.payroll`, `hr.goals`, `hr.appraisals`, `hr.improvement_plans`, `hr.discipline`, `hr.training` per HR_PLAN §6; the direct manager's team grants cover goals, appraisals (score), plans, actions (draft), training (view / nominate); the system admin has none of them (holds only the employee role's own-scope views). Workflow relations for the appraised / disciplined employee are named `subject` (the role code `employee` belongs to everyone).
 - **Exports:** `hr.payroll_register` (amounts sensitive), `hr.appraisals`, `hr.goals`, `hr.trainings`, `hr.training_participants` (department managers may export their department), `hr.discipline` (description and fine sensitive). **Dashboard [HR §5 خامساً]:** appraisal completion, employees with goals, trainings completed, promotions.
 - **Seed:** last month's run paid end to end (sara prepares, noura approves, abdulaziz approves, shahad pays) and this month's draft; the default template, an open cycle with two approved appraisals and an improvement plan (rashed), a delivered written notice (yousef), two needs, an approved plan, a completed safety course with certificates and an upcoming sales course. Test counts: API 244 → 249 (5 new in `hr-h3a.test.ts`), web 45 → 57.
+
+### H3a review — owner decisions and the changes they required (2026-11-24, branch `hr-h3a`)
+**Owner review (2026-11-24):** H3a approved in substance («الشغل ممتاز») with the decisions below, all applied on `hr-h3a` before the merge, each with a test in `hr-h3a.test.ts`.
+
+**The six implementation notes above are confirmed, with additions:**
+1. **Absence day = (basic + allowances) ÷ 30, no lateness deduction** — confirmed as is.
+2. **GOSI contribution wage = basic + housing** — confirmed, plus two settings in `hr.payroll.policy`: **`gosiIncludeCommissions`** (default **on**): the monthly commissions of Sales staff enter the contribution wage (read from the allowances whose type is in `gosiCommissionAllowanceTypes` — «عمولة» — until the Sales commission run exists); **`gosiWageMinHalalas` / `gosiWageMaxHalalas`** = **1 500 / 45 000 SAR**: the contribution wage is bounded and the payslip is flagged `gosi_wage_bounded`. The hire-date fallback for a missing `gosiJoinDate` (flagged) is confirmed. `Payslip.gosiWageHalalas` now stores the wage used.
+3. **Excess over the 50 % cap rolls into the next run** — confirmed.
+4. **Advance instalments start the period after the Finance approval** — confirmed with a condition: **an instalment above 10 % of the monthly wage (`advanceInstalmentCapBp` = 1000) needs the employee's written consent on the request (`details.scheduleConsent`, a mandatory tick in «رفع طلب»); without it the server splits the advance so no instalment exceeds 10 %** (`details.instalments` rewritten, `requestedInstalments` and `instalmentHalalas` kept for the record, flag `instalments_rescheduled`; with consent the flag is `instalment_consent_given`). `GET /hr/requests/types` returns the requester's own cap so the form shows the estimated instalment and the warning live.
+5. **Appraisal: no self-assessment, automatic goal / task scores, visible to the employee after approval** — confirmed.
+6. **A fine is deducted only after the action is final** — confirmed; the windows changed as below.
+
+**Disciplinary actions per the current Labor Law text (`hr.discipline`, still provisional as a whole):**
+- **Appeal (تظلم) window: 30 days from the written notice, official holidays excluded** (`appealDays` 15 → **30**; `appealDeadlineFrom` walks the days and skips the `holidays` collection, so a holiday inside the window extends it by a day); the penalty is **confirmed automatically when the window ends without an appeal** (daily job, as before).
+- **An appeal must be decided in writing within 15 days** (`appealDecisionDays` = 15): the appeal creates a **task in «مهامي» for the approver** (source `disciplinary`, priority high, due at the end of day 15) and stamps `appealDecisionDueAt`; the written decision (uphold / withdraw) closes the task.
+- **The 30 days of art. 71 run from the discovery date, not the violation date:** new mandatory field **`discoveryDate`** (≥ violation date, ≤ today); a discovery older than `violationDiscoveryDays` is refused (`discovery_expired`). The old check on the violation date is gone.
+- **No penalty more than 30 days after the investigation ended** (`investigationSignDays` = 30): optional **`investigationEndDate`**; refused at creation and again at approval (`investigation_expired`).
+- **A single violation's fine ≤ 5 days of wage** (`maxFineDaysPerViolation` = 5, also bounded by the ladder step; `fine_over_max`).
+- **The fines deducted in one month ≤ 5 days of wage, the excess rolls over** (`maxFineDaysPerMonth` = 5): `computePayslip` caps the `fine` lines at 5 × (basic + allowances) ÷ 30, flags `fine_capped` and `fine_deferred:<n>`; at the HR approval the excess becomes a next-run adjustment **kept as a fine** (`sourceType: disciplinary`) so it counts against the next month's cap too. This cap is applied before the art. 92 50 % cap.
+- **One penalty per violation:** a second action on the same employee and violation date (not withdrawn) is refused with **409 `violation_already_penalised`** unless the issuer ticks **`separateViolation`** («مخالفة أخرى مستقلة في نفس اليوم»), which is stored on the action.
+
+**Overtime (art. 107) — formula corrected:** the hour was basic ÷ 30 ÷ daily hours × 150 %; it is now **actual wage ÷ 30 ÷ daily hours + 50 % × basic ÷ 30 ÷ daily hours** (`overtimeHourHalalas`; the premium is `hr.overtime.rateBp` − 100 %). Owner's example in the test: basic 4 000 + allowances 2 000, 8 h → **33.33 SAR** per hour (never 6 000 × 1.5 ÷ 240 = 37.50). With no allowances the result equals the old one.
+
+Test counts after the review: API 249 → **252** (hr-h3a.test.ts 5 → 8), web 57 (the request-form test extended).
 
 ## Still open (ask before building)
 Everything in the "Open decisions" section of `CLAUDE.md` that is not settled above, notably: accounting depth / general ledger, ZATCA route and wave, financial authority matrix and monthly cut-off, customer app and company portal, offline support for field staff, discount limits, points and rewards policy, certificate weight criterion, impact factors, organization-type list (SAL §4.1 vs CS §6.8), Finance-stage state labels in other modules (FIN §5 vs PRC §4 and MKT §8).

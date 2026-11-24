@@ -24,7 +24,7 @@ import { claimAttachments } from '../../core/files/service';
 import { withTransaction } from '../../db';
 import { applyApprovedRequest, daysBetween, recomputeDays, validateAttendanceRequest } from './attendance.service';
 import { onLeaveApproved, validateLeaveRequest } from './leave.service';
-import { onAdvanceApproved } from './payroll.service';
+import { advanceInstalmentPlan, onAdvanceApproved } from './payroll.service';
 
 const ATTENDANCE_TYPES = new Set(['attendance_correction', 'geofence_exception', 'overtime']);
 
@@ -182,6 +182,12 @@ export async function createRequest(
     if (limit === null)
       flags.push('advance_limit_unset'); // DECISIONS §5: flag for HR until the limit is decided
     else if ((details.amountHalalas as number) > limit) flags.push('over_limit');
+    // Owner decision 2026-11-24: an instalment above 10 % of the wage needs the employee's written consent, else the advance is split.
+    const policy = await getSetting('hr.payroll.policy');
+    const wage = (employee.basicSalaryHalalas ?? 0) + (employee.allowances ?? []).reduce((s, a) => s + (a.amountHalalas ?? 0), 0);
+    const plan = advanceInstalmentPlan(details.amountHalalas as number, Number(details.instalments ?? 1), wage, details.scheduleConsent === true, policy.advanceInstalmentCapBp);
+    details = { ...details, instalments: plan.instalments, instalmentHalalas: Math.ceil((details.amountHalalas as number) / plan.instalments), requestedInstalments: Number(details.instalments ?? 1) };
+    if (plan.flag) flags.push(plan.flag);
   }
   // Record, attachment claims, action log and audit commit together (review G9).
   const request = await withTransaction(async (session) => {

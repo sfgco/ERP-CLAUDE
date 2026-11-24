@@ -162,7 +162,7 @@ export const DISCIPLINARY_STATE_AR: Record<DisciplinaryState, string> = {
   pending_approval: 'بانتظار الاعتماد',
   approved: 'معتمد',
   delivered: 'تم إبلاغ الموظف',
-  appealed: 'قيد الاعتراض',
+  appealed: 'قيد التظلم',
   upheld: 'مثبت',
   withdrawn: 'مسحوب',
 };
@@ -172,7 +172,7 @@ export const disciplineLadderStepSchema = z.object({
   labelAr: z.string().trim().min(1).max(120),
   order: z.number().int().min(1).max(50),
   payrollEffect: z.enum(DISCIPLINARY_EFFECTS),
-  /** For `fine`: the most days of wage that may be deducted per month (art. 70: ≤ 5). */
+  /** For `fine`: the most days of wage this step may deduct for one violation (art. 70: ≤ 5; the policy's `maxFineDaysPerViolation` also applies). */
   maxFineDaysPerMonth: z.number().int().min(0).max(31).nullable(),
   /** For `suspension`: the most days (art. 70: ≤ 5). */
   maxSuspensionDays: z.number().int().min(0).max(31).nullable(),
@@ -182,10 +182,20 @@ export type DisciplineLadderStep = z.infer<typeof disciplineLadderStepSchema>;
 export const disciplinePolicySchema = z.object({
   /** The warnings ladder — must match the approved لائحة تنظيم العمل (Q11, provisional). */
   ladder: z.array(disciplineLadderStepSchema).max(50),
-  /** Days the employee has to object after delivery (art. 72 / Q11: 15). */
+  /**
+   * Days the employee has to object after the written notice — art. 72 (owner decision 2026-11-24: 30 days, official
+   * holidays excluded, counted from the delivery date); the penalty is confirmed when the window ends without an appeal.
+   */
   appealDays: z.number().int().min(1).max(90),
-  /** A penalty for a violation discovered more than N days ago is refused (art. 71 proposal: 30). */
+  /** Days the approver has to decide an appeal in writing (art. 72: 15); the decision is a task with that deadline. */
+  appealDecisionDays: z.number().int().min(1).max(90),
+  /** A penalty for a violation *discovered* more than N days ago is refused (art. 71: 30, from the discovery date). */
   violationDiscoveryDays: z.number().int().min(1).max(365),
+  /** No penalty may be signed more than N days after the investigation ended and the violation was established (art. 71: 30). */
+  investigationSignDays: z.number().int().min(1).max(365),
+  /** A single violation's fine ≤ N days of wage, and the fines deducted in one month ≤ N days of wage (art. 70: 5); the excess rolls over. */
+  maxFineDaysPerViolation: z.number().min(0).max(31),
+  maxFineDaysPerMonth: z.number().min(0).max(31),
   /** Roles that may draft an action: the direct manager (relation) and HR. */
   issuers: z.array(z.string()).min(1),
   approverRole: z.string().min(1),
@@ -197,12 +207,16 @@ export const DEFAULT_DISCIPLINE_POLICY: DisciplinePolicy = {
     { code: 'warning_1', labelAr: 'إنذار أول', order: 2, payrollEffect: 'none', maxFineDaysPerMonth: null, maxSuspensionDays: null, articleAr: 'المادة 66' },
     { code: 'warning_2', labelAr: 'إنذار ثانٍ', order: 3, payrollEffect: 'none', maxFineDaysPerMonth: null, maxSuspensionDays: null, articleAr: 'المادة 66' },
     { code: 'final_warning', labelAr: 'إنذار نهائي', order: 4, payrollEffect: 'none', maxFineDaysPerMonth: null, maxSuspensionDays: null, articleAr: 'المادة 66' },
-    { code: 'fine', labelAr: 'خصم من الأجر (حتى 5 أيام في الشهر)', order: 5, payrollEffect: 'fine', maxFineDaysPerMonth: 5, maxSuspensionDays: null, articleAr: 'المادتان 66 و70' },
+    { code: 'fine', labelAr: 'خصم من الأجر (حتى أجر 5 أيام للمخالفة الواحدة)', order: 5, payrollEffect: 'fine', maxFineDaysPerMonth: 5, maxSuspensionDays: null, articleAr: 'المادتان 66 و70' },
     { code: 'suspension', labelAr: 'إيقاف عن العمل مع الحرمان من الأجر (حتى 5 أيام)', order: 6, payrollEffect: 'suspension', maxFineDaysPerMonth: null, maxSuspensionDays: 5, articleAr: 'المادتان 66 و70' },
     { code: 'termination', labelAr: 'فصل من الخدمة', order: 7, payrollEffect: 'termination', maxFineDaysPerMonth: null, maxSuspensionDays: null, articleAr: 'المادتان 66 و80' },
   ],
-  appealDays: 15,
+  appealDays: 30,
+  appealDecisionDays: 15,
   violationDiscoveryDays: 30,
+  investigationSignDays: 30,
+  maxFineDaysPerViolation: 5,
+  maxFineDaysPerMonth: 5,
   issuers: ['direct_manager', 'hr_officer', 'hr_manager'],
   approverRole: 'hr_manager',
 };
@@ -210,11 +224,17 @@ export const createDisciplinarySchema = z.object({
   employeeId: objectIdSchema,
   kind: z.string().trim().min(1).max(40),
   violationDate: riyadhDaySchema,
+  /** When the employer learned of the violation (art. 71: the 30 days run from here, not from the violation). */
+  discoveryDate: riyadhDaySchema,
+  /** When the investigation ended and the violation was established (art. 71: the penalty must be signed within 30 days of it). */
+  investigationEndDate: riyadhDaySchema.optional(),
   description: z.string().trim().min(5).max(3000),
   evidenceAttachmentIds: z.array(objectIdSchema).default([]),
-  /** For a fine: the days of wage to deduct (≤ the ladder step's monthly maximum). */
+  /** For a fine: the days of wage to deduct (≤ `maxFineDaysPerViolation`, art. 70). */
   fineDays: z.number().min(0).max(31).optional(),
   suspensionDays: z.number().int().min(0).max(31).optional(),
+  /** One penalty per violation: a second action on the same employee and day is refused (409) unless it is declared a separate violation. */
+  separateViolation: z.boolean().optional(),
 });
 export type CreateDisciplinaryInput = z.infer<typeof createDisciplinarySchema>;
 export const disciplinaryTransitionSchema = z.object({

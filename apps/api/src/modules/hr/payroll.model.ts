@@ -88,6 +88,7 @@ const payslipSchema = new Schema(
     grossHalalas: { type: Number, required: true },
     deductionsHalalas: { type: Number, required: true },
     netHalalas: { type: Number, required: true },
+    gosiWageHalalas: { type: Number },
     gosiEmployeeHalalas: { type: Number, default: 0 },
     gosiEmployerHalalas: { type: Number, default: 0 },
     attendance: {

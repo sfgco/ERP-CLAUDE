@@ -33,10 +33,16 @@ export const requestsRouter = Router();
 requestsRouter.get(
   '/types',
   requireAuth(),
-  asyncHandler(async (_req, res) => {
+  asyncHandler(async (req: AuthedRequest, res) => {
     const routes = await getSetting('hr.requestRoutes');
     const limit = await getSetting('hr.advanceLimitHalalas');
+    // The requester's own instalment cap (10 % of their wage — their own salary data, visible to them in the portal).
+    const policy = await getSetting('hr.payroll.policy');
+    const me = await Employee.findOne({ userId: req.auth.user._id, deletedAt: null }).select('basicSalaryHalalas allowances').lean();
+    const wage = me ? (me.basicSalaryHalalas ?? 0) + (me.allowances ?? []).reduce((s, a) => s + (a.amountHalalas ?? 0), 0) : 0;
     res.json({
+      advanceInstalmentCapBp: policy.advanceInstalmentCapBp,
+      advanceInstalmentCapHalalas: Math.floor((wage * policy.advanceInstalmentCapBp) / 10_000),
       items: HR_REQUEST_TYPES.map((type) => ({
         type,
         labelAr: HR_REQUEST_TYPE_AR[type],
