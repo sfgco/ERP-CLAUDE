@@ -18,19 +18,23 @@ import { existsSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-/** One row per department (CLAUDE.md "Modules"); ports and databases never overlap. `main` is the erp-1 checkout itself. */
+/**
+ * One row per department (CLAUDE.md "Modules"); ports and databases never overlap. `main` is the erp-1 checkout itself.
+ * API ports 4000 + 100 per department; web ports 5200 + 10 per department — deliberately outside Vite's default range
+ * (5173, 5174, …), which the owner's other local Vite projects occupy (owner decision 2026-11-25).
+ */
 export const DEPARTMENTS = {
-  main: { api: 4000, web: 5173, db: 'eayni_main', nameAr: 'الفرع الرئيسي', owns: [] },
+  main: { api: 4000, web: 5200, db: 'eayni_main', nameAr: 'الفرع الرئيسي', owns: [] },
   sales: {
     api: 4100,
-    web: 5174,
+    web: 5210,
     db: 'eayni_sales',
     nameAr: 'المبيعات',
     owns: ['apps/api/src/modules/sales/', 'apps/api/src/modules/crm/', 'apps/api/src/seedSales.ts', 'apps/web/src/pages/sales/', 'apps/web/src/pages/cs/', 'packages/shared/src/schemas/sales', 'packages/shared/src/schemas/crm.ts', 'docs/SALES', 'docs/prompts/sales.md'],
   },
   hr: {
     api: 4200,
-    web: 5175,
+    web: 5220,
     db: 'eayni_hr',
     nameAr: 'الموارد البشرية',
     owns: [
@@ -56,13 +60,13 @@ export const DEPARTMENTS = {
       'docs/prompts/hr.md',
     ],
   },
-  finance: { api: 4300, web: 5176, db: 'eayni_finance', nameAr: 'المالية', owns: ['apps/api/src/modules/finance/', 'apps/web/src/pages/finance/', 'packages/shared/src/schemas/finance', 'docs/FINANCE', 'docs/prompts/finance.md'] },
-  cs: { api: 4400, web: 5177, db: 'eayni_cs', nameAr: 'خدمة العملاء', owns: ['apps/api/src/modules/cs/', 'apps/web/src/pages/cs/', 'packages/shared/src/schemas/cs', 'docs/CS', 'docs/prompts/cs.md'] },
-  ops: { api: 4500, web: 5178, db: 'eayni_ops', nameAr: 'التشغيل', owns: ['apps/api/src/modules/ops/', 'apps/web/src/pages/ops/', 'packages/shared/src/schemas/ops', 'docs/OPS', 'docs/prompts/ops.md'] },
-  procurement: { api: 4600, web: 5179, db: 'eayni_procurement', nameAr: 'المشتريات', owns: ['apps/api/src/modules/procurement/', 'apps/web/src/pages/procurement/', 'packages/shared/src/schemas/procurement', 'docs/PRC', 'docs/prompts/procurement.md'] },
-  marketing: { api: 4700, web: 5180, db: 'eayni_marketing', nameAr: 'التسويق', owns: ['apps/api/src/modules/marketing/', 'apps/web/src/pages/marketing/', 'packages/shared/src/schemas/marketing', 'docs/MKT', 'docs/prompts/marketing.md'] },
-  sustainability: { api: 4800, web: 5181, db: 'eayni_sustainability', nameAr: 'التنمية المستدامة والشراكات', owns: ['apps/api/src/modules/sustainability/', 'apps/web/src/pages/sustainability/', 'packages/shared/src/schemas/sustainability', 'docs/SUS', 'docs/prompts/sustainability.md'] },
-  it: { api: 4900, web: 5182, db: 'eayni_it', nameAr: 'التقنية', owns: ['apps/api/src/modules/it/', 'apps/web/src/pages/it/', 'packages/shared/src/schemas/it', 'docs/IT', 'docs/prompts/it.md'] },
+  finance: { api: 4300, web: 5230, db: 'eayni_finance', nameAr: 'المالية', owns: ['apps/api/src/modules/finance/', 'apps/web/src/pages/finance/', 'packages/shared/src/schemas/finance', 'docs/FINANCE', 'docs/prompts/finance.md'] },
+  cs: { api: 4400, web: 5240, db: 'eayni_cs', nameAr: 'خدمة العملاء', owns: ['apps/api/src/modules/cs/', 'apps/web/src/pages/cs/', 'packages/shared/src/schemas/cs', 'docs/CS', 'docs/prompts/cs.md'] },
+  ops: { api: 4500, web: 5250, db: 'eayni_ops', nameAr: 'التشغيل', owns: ['apps/api/src/modules/ops/', 'apps/web/src/pages/ops/', 'packages/shared/src/schemas/ops', 'docs/OPS', 'docs/prompts/ops.md'] },
+  procurement: { api: 4600, web: 5260, db: 'eayni_procurement', nameAr: 'المشتريات', owns: ['apps/api/src/modules/procurement/', 'apps/web/src/pages/procurement/', 'packages/shared/src/schemas/procurement', 'docs/PRC', 'docs/prompts/procurement.md'] },
+  marketing: { api: 4700, web: 5270, db: 'eayni_marketing', nameAr: 'التسويق', owns: ['apps/api/src/modules/marketing/', 'apps/web/src/pages/marketing/', 'packages/shared/src/schemas/marketing', 'docs/MKT', 'docs/prompts/marketing.md'] },
+  sustainability: { api: 4800, web: 5280, db: 'eayni_sustainability', nameAr: 'التنمية المستدامة والشراكات', owns: ['apps/api/src/modules/sustainability/', 'apps/web/src/pages/sustainability/', 'packages/shared/src/schemas/sustainability', 'docs/SUS', 'docs/prompts/sustainability.md'] },
+  it: { api: 4900, web: 5290, db: 'eayni_it', nameAr: 'التقنية', owns: ['apps/api/src/modules/it/', 'apps/web/src/pages/it/', 'packages/shared/src/schemas/it', 'docs/IT', 'docs/prompts/it.md'] },
 };
 
 const PROTECTED_BRANCHES = ['main', 'deploy-aws'];

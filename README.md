@@ -16,10 +16,10 @@ the MongoDB binary (~100 MB).
 ```bash
 npm install
 npm run seed      # departments, sample branch/site, holidays, admin user (idempotent)
-npm run dev       # API http://localhost:4000 + web http://localhost:5173
+npm run dev       # API http://localhost:4000 + web http://localhost:5200
 ```
 
-Sign in at <http://localhost:5173> with `admin@eayni.local` / `Admin12345!`
+Sign in at <http://localhost:5200> with `admin@eayni.local` / `Admin12345!`
 (override with `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` before seeding). The admin role requires
 TOTP: scan the QR code with an authenticator app on first login, then change the temporary password.
 

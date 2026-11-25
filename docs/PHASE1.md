@@ -42,7 +42,7 @@ in the `main` branch (GitHub `sqp77/ERP-CLAUDE`). Specs are in `docs/SPECS.md`; 
 ```bash
 npm install            # see README for the npm cache note
 npm run seed           # idempotent; adds sample data to an existing DB
-npm run dev            # API :4000, web :5173 (or the next free port)
+npm run dev            # API :4000, web :5200 (from the worktree's .env — docs/WORKTREES.md)
 ```
 Sample accounts (`README.md`): all `…@eayni.local`, password `Sample12345!`; admin `admin@eayni.local` / `Admin12345!`.
 HR, Finance and admin accounts must enrol an authenticator on first login.

@@ -8,18 +8,19 @@ code stays one repository and one `main`; the worktrees are checkouts of departm
 
 | Department | Folder (next to `erp-1`) | Branch prefix | API | Web | Local DB | Owns (a branch changes only these) |
 |---|---|---|---|---|---|---|
-| **main** (demo of everything merged) | `erp-1` | `main` only — **never check out another branch here** | 4000 | 5173 | `eayni_main` | — |
-| Sales + shared CRM | `erp-1-sales` | `sales-<slice>` (`sales-s6`, …) | 4100 | 5174 | `eayni_sales` | `apps/api/src/modules/{sales,crm}/`, `apps/api/src/seedSales.ts`, `apps/web/src/pages/{sales,cs}/`, `packages/shared/src/schemas/sales*.ts`, `crm.ts`, `docs/SALES*.md`, `docs/prompts/sales.md` |
-| HR + Employee Portal | `erp-1-hr` | `hr-<slice>` (`hr-h3b`, `hr-h4`, …) | 4200 | 5175 | `eayni_hr` | `apps/api/src/modules/hr/`, `apps/api/src/seed{Hr,Attendance,Requests,EmployeeReports,H3a}.ts`, `apps/web/src/pages/{hr,me,manager,requests,reports}/`, `apps/web/src/pages/dashboards/HrDashboardPage.tsx`, `packages/shared/src/schemas/{hr*,attendance,payroll,performance,training,portal}.ts`, `docs/HR*.md`, `docs/prompts/hr.md` |
-| Finance | `erp-1-finance` | `finance-<slice>` | 4300 | 5176 | `eayni_finance` | `apps/api/src/modules/finance/`, `apps/web/src/pages/finance/`, `packages/shared/src/schemas/finance*.ts`, `docs/FINANCE*.md` |
-| Customer Service | `erp-1-cs` | `cs-<slice>` | 4400 | 5177 | `eayni_cs` | `modules/cs/`, `pages/cs/`, `schemas/cs*.ts`, `docs/CS*.md` |
-| Operations | `erp-1-ops` | `ops-<slice>` | 4500 | 5178 | `eayni_ops` | `modules/ops/`, `pages/ops/`, `schemas/ops*.ts`, `docs/OPS*.md` |
-| Procurement | `erp-1-procurement` | `procurement-<slice>` | 4600 | 5179 | `eayni_procurement` | `modules/procurement/`, `pages/procurement/`, `schemas/procurement*.ts`, `docs/PRC*.md` |
-| Marketing | `erp-1-marketing` | `marketing-<slice>` | 4700 | 5180 | `eayni_marketing` | `modules/marketing/`, `pages/marketing/`, `schemas/marketing*.ts`, `docs/MKT*.md` |
-| Sustainability | `erp-1-sustainability` | `sustainability-<slice>` | 4800 | 5181 | `eayni_sustainability` | `modules/sustainability/`, `pages/sustainability/`, `schemas/sustainability*.ts`, `docs/SUS*.md` |
-| IT | `erp-1-it` | `it-<slice>` | 4900 | 5182 | `eayni_it` | `modules/it/`, `pages/it/`, `schemas/it*.ts`, `docs/IT*.md` |
+| **main** (demo of everything merged) | `erp-1` | `main` only — **never check out another branch here** | 4000 | 5200 | `eayni_main` | — |
+| Sales + shared CRM | `erp-1-sales` | `sales-<slice>` (`sales-s6`, …) | 4100 | 5210 | `eayni_sales` | `apps/api/src/modules/{sales,crm}/`, `apps/api/src/seedSales.ts`, `apps/web/src/pages/{sales,cs}/`, `packages/shared/src/schemas/sales*.ts`, `crm.ts`, `docs/SALES*.md`, `docs/prompts/sales.md` |
+| HR + Employee Portal | `erp-1-hr` | `hr-<slice>` (`hr-h3b`, `hr-h4`, …) | 4200 | 5220 | `eayni_hr` | `apps/api/src/modules/hr/`, `apps/api/src/seed{Hr,Attendance,Requests,EmployeeReports,H3a}.ts`, `apps/web/src/pages/{hr,me,manager,requests,reports}/`, `apps/web/src/pages/dashboards/HrDashboardPage.tsx`, `packages/shared/src/schemas/{hr*,attendance,payroll,performance,training,portal}.ts`, `docs/HR*.md`, `docs/prompts/hr.md` |
+| Finance | `erp-1-finance` | `finance-<slice>` | 4300 | 5230 | `eayni_finance` | `apps/api/src/modules/finance/`, `apps/web/src/pages/finance/`, `packages/shared/src/schemas/finance*.ts`, `docs/FINANCE*.md` |
+| Customer Service | `erp-1-cs` | `cs-<slice>` | 4400 | 5240 | `eayni_cs` | `modules/cs/`, `pages/cs/`, `schemas/cs*.ts`, `docs/CS*.md` |
+| Operations | `erp-1-ops` | `ops-<slice>` | 4500 | 5250 | `eayni_ops` | `modules/ops/`, `pages/ops/`, `schemas/ops*.ts`, `docs/OPS*.md` |
+| Procurement | `erp-1-procurement` | `procurement-<slice>` | 4600 | 5260 | `eayni_procurement` | `modules/procurement/`, `pages/procurement/`, `schemas/procurement*.ts`, `docs/PRC*.md` |
+| Marketing | `erp-1-marketing` | `marketing-<slice>` | 4700 | 5270 | `eayni_marketing` | `modules/marketing/`, `pages/marketing/`, `schemas/marketing*.ts`, `docs/MKT*.md` |
+| Sustainability | `erp-1-sustainability` | `sustainability-<slice>` | 4800 | 5280 | `eayni_sustainability` | `modules/sustainability/`, `pages/sustainability/`, `schemas/sustainability*.ts`, `docs/SUS*.md` |
+| IT | `erp-1-it` | `it-<slice>` | 4900 | 5290 | `eayni_it` | `modules/it/`, `pages/it/`, `schemas/it*.ts`, `docs/IT*.md` |
 
-The table is code: `scripts/wt.mjs` (`DEPARTMENTS`). Only Sales, HR and Finance have worktrees today; `wt:new` creates
+The table is code: `scripts/wt.mjs` (`DEPARTMENTS`). Web ports are 5200 + 10 per department, outside Vite's default range
+(5173, 5174, …) so they never collide with other local Vite projects; API ports are 4000 + 100 per department. Only Sales, HR and Finance have worktrees today; `wt:new` creates
 the others when their work starts. CI runs on every prefix above plus `infra-*` (platform work).
 
 **Everything not in the "Owns" column is shared code**: `apps/api/src/core/`, `app.ts`, `bootstrap.ts`, `config.ts`,
@@ -34,7 +35,7 @@ Each worktree has its own `.env` in its root (gitignored; `.env.example` documen
 
 ```
 API_PORT=4200
-WEB_PORT=5175
+WEB_PORT=5220
 DEV_DB_NAME=eayni_hr
 ```
 
@@ -64,7 +65,7 @@ DEV_DB_NAME=eayni_hr
 Typical day on HR:
 
 ```bash
-npm run wt:dev hr                 # http://localhost:5175 (API 4200, DB eayni_hr)
+npm run wt:dev hr                 # http://localhost:5220 (API 4200, DB eayni_hr)
 # … work on erp-1-hr, commit with the spec citation …
 git -C ../erp-1-hr push -u origin hr-h3b
 npm run wt:sync hr                # pick up what landed on main
@@ -74,7 +75,7 @@ npm run wt:check hr               # full checks + shared-files list + ff-mergeab
 ## 4. Rules that protect each department
 
 1. **`erp-1` ALWAYS stays on `main`.** Never check out another branch there; it is the demo of everything merged
-   (API 4000, web 5173, DB `eayni_main`). Department work happens in the department's worktree. `wt:*` refuses to run
+   (API 4000, web 5200, DB `eayni_main`). Department work happens in the department's worktree. `wt:*` refuses to run
    while `erp-1` is on another branch.
 2. **One worktree per department, one branch prefix per department**, always created from the latest `origin/main`.
    Never create a worktree inside another, never share a folder between branches.
