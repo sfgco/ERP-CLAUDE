@@ -17,7 +17,15 @@
     "lint": "eslint .",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "mongo": "npm run mongo -w apps/api",
+    "wt:list": "node scripts/wt.mjs list",
+    "wt:new": "node scripts/wt.mjs new",
+    "wt:dev": "node scripts/wt.mjs dev",
+    "wt:sync": "node scripts/wt.mjs sync",
+    "wt:check": "node scripts/wt.mjs check",
+    "wt:rm": "node scripts/wt.mjs rm",
+    "wt:env": "node scripts/wt.mjs env"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

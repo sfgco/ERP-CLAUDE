@@ -1,12 +1,30 @@
+import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { MongoClient } from 'mongodb';
+import { env } from './config';
 import { logger } from './logger';
 
 const PORT = 27117;
 const REPL = 'eayni-dev';
-const DB_PATH = '.data/mongo';
 const HOST = `127.0.0.1:${PORT}`;
-export const DEV_MONGO_URI = `mongodb://${HOST}/eayni?replicaSet=${REPL}`;
+/**
+ * One local MongoDB for every worktree (docs/WORKTREES.md): the data directory is the *main checkout's*
+ * apps/api/.data/mongo whichever worktree starts it (git's common dir points there), so the department
+ * databases (eayni_main, eayni_sales, eayni_hr, …) live together and any worktree may start or reuse the server.
+ */
+function sharedDataDir(): string {
+  if (env().DEV_MONGO_DIR) return resolve(env().DEV_MONGO_DIR!);
+  try {
+    const common = execFileSync('git', ['rev-parse', '--git-common-dir'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    return resolve(dirname(resolve(common)), 'apps', 'api', '.data', 'mongo');
+  } catch {
+    return resolve('.data/mongo');
+  }
+}
+/** The worktree's own database on the shared server (`DEV_DB_NAME`, default `eayni`). */
+export const devMongoUri = (db = env().DEV_DB_NAME): string => `mongodb://${HOST}/${db}?replicaSet=${REPL}`;
+export const DEV_MONGO_URI = devMongoUri();
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -72,6 +90,7 @@ export async function startDevMongo(): Promise<{ uri: string; stop: () => Promis
     return { uri: DEV_MONGO_URI, stop: async () => {} };
   }
   const { MongoMemoryServer } = await import('mongodb-memory-server');
+  const DB_PATH = sharedDataDir();
   mkdirSync(DB_PATH, { recursive: true });
   let lastErr: unknown;
   for (let attempt = 1; attempt <= 6; attempt++) {
