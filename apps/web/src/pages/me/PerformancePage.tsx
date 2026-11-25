@@ -159,6 +159,8 @@ export function MyPerformancePage() {
                     {t('discipline.violationDate')}: {formatDate(a.violationDate)}
                     {a.deliveredAt ? ` · ${t('discipline.deliveredAt')}: ${formatDate(a.deliveredAt)}` : ''}
                     {a.appealDeadline && a.state === 'delivered' ? ` · ${t('discipline.appealUntil', { date: formatDate(a.appealDeadline) })}` : ''}
+                    {a.courtObjectionDeadline && a.state === 'objection_window' ? ` · ${t('discipline.courtObjectionUntil', { date: formatDate(a.courtObjectionDeadline) })}` : ''}
+                    {a.state === 'court_objection' ? ` · ${t('discipline.courtHoldNote')}` : ''}
                   </div>
                   {a.state === 'delivered' && (
                     <div className="mt-2 flex gap-2">

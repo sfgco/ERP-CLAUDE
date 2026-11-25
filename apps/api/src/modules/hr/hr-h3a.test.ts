@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
-import { DEFAULT_APPRAISAL_TEMPLATE, DEFAULT_PAYROLL_POLICY } from '@eayni/shared';
+import { DEFAULT_APPRAISAL_TEMPLATE, DEFAULT_DISCIPLINE_POLICY, DEFAULT_PAYROLL_POLICY } from '@eayni/shared';
 import { activateAccount, auth, loginAs, makeDepartment, makeUser, testApp } from '../../test/helpers';
 import { setSetting } from '../../core/settings/service';
 import { SYSTEM_ACTOR } from '../../core/http/context';
@@ -8,19 +8,19 @@ import { Notification } from '../../core/notifications/model';
 import { Outbox } from '../../core/outbox/model';
 import { AuditLog } from '../../core/audit/model';
 import { Attachment } from '../../core/files/model';
-import { Task } from '../../core/tasks/model';
+import { Task, TaskEvent } from '../../core/tasks/model';
 import { CalendarEvent } from '../../core/calendar/model';
 import { Branch, Site } from '../../core/org/model';
 import { Holiday } from '../../core/dates/model';
 import { User } from '../../core/auth/model';
-import { riyadhDate } from '../../core/dates/businessDays';
+import { riyadhDate, riyadhDayEndOf } from '../../core/dates/businessDays';
 import { HrRequest } from './requests.model';
 import { AttendanceDay, AttendancePunch } from './attendance.model';
 import { addDays, computeDay, dayTime, weekdayOf } from './attendance.service';
 import { AdvanceSchedule, PayrollAdjustment, Payslip } from './payroll.model';
 import { advanceInstalmentPlan, attendanceWindow, currentPeriod, gosiWageOf, nextPeriod, overtimeHourHalalas, previousPeriod } from './payroll.service';
-import { Appraisal, AppraisalCycle } from './performance.model';
-import { appealDeadlineFrom, runAppraisalJobs } from './performance.service';
+import { Appraisal, AppraisalCycle, DisciplinaryAction } from './performance.model';
+import { appealDeadlineFrom, employeeDeadlineFrom, oralQuestioningAllowed, runAppraisalJobs, runPerformanceFollowUps } from './performance.service';
 import { Employee } from './model';
 
 const app = () => testApp();
@@ -433,42 +433,46 @@ describe('H3a §3.7 — goals linked to KPIs, appraisal cycles, scoring, approva
 
   it('disciplinary actions follow the ladder (provisional), need an approver other than the issuer, are delivered in writing, may be appealed, and a fine reaches payroll once upheld — with the Labor Law windows the owner set on 2026-11-24', async () => {
     const { hr, hro, mgr, a, b } = await setup();
+    // The 2026-11-25 review made the weekend exclusion a setting (default on) — off here so the 2026-11-24 day counts stay exact; see the dedicated test below.
+    await setSetting('hr.discipline', { ...DEFAULT_DISCIPLINE_POLICY, employeeDeadlinesExcludeWeekend: false }, SYSTEM_ACTOR);
+    // Art. 71 (2026-11-25): every penalty carries the investigation's end date and its record.
+    const inv = { investigationEndDate: today(), investigationRecordText: 'محضر التحقيق: استُمع إلى الموظف بحضور المشرف وأقرّ بالواقعة' };
     const policy = await api(a.token).get('/hr/discipline/policy');
-    expect(policy.body.provisional).toBe(true);
+    expect(policy.body.provisional).toBe(true); // the ladder stays provisional until the HR team confirms it (Q11)
     expect(policy.body).toMatchObject({ appealDays: 30, appealDecisionDays: 15, violationDiscoveryDays: 30, investigationSignDays: 30, maxFineDaysPerViolation: 5, maxFineDaysPerMonth: 5 });
     expect(policy.body.ladder.map((s: { code: string }) => s.code)).toContain('final_warning');
     // The appeal window: 30 days excluding official holidays — a holiday inside it extends it by a day.
     expect(appealDeadlineFrom('2026-01-01', 30, new Set())).toEqual(new Date('2026-01-31T23:59:59.999+03:00'));
     expect(appealDeadlineFrom('2026-01-01', 30, new Set(['2026-01-10', '2026-01-11']))).toEqual(new Date('2026-02-02T23:59:59.999+03:00'));
     const d = (n: number) => addDays(today(), n);
-    expect((await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'nope', violationDate: today(), discoveryDate: today(), description: 'تأخر متكرر خلال الأسبوع' })).status).toBe(400);
-    expect((await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-2), description: 'بلا تاريخ اكتشاف' })).status).toBe(400); // discoveryDate required
+    expect((await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'nope', violationDate: today(), discoveryDate: today(), ...inv, description: 'تأخر متكرر خلال الأسبوع' })).status).toBe(400);
+    expect((await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-2), ...inv, description: 'بلا تاريخ اكتشاف' })).status).toBe(400); // discoveryDate required
     // Art. 71: the 30 days run from the *discovery*, not the violation.
-    const late = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-40), discoveryDate: d(-40), description: 'مخالفة قديمة اكتُشفت في يومها' });
+    const late = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-40), discoveryDate: d(-40), ...inv, description: 'مخالفة قديمة اكتُشفت في يومها' });
     expect(late.status).toBe(400);
     expect(late.body.error.details.code).toBe('discovery_expired');
-    const discoveredLate = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-40), discoveryDate: d(-5), description: 'مخالفة قديمة اكتُشفت قبل خمسة أيام فقط' });
+    const discoveredLate = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-40), discoveryDate: d(-5), ...inv, description: 'مخالفة قديمة اكتُشفت قبل خمسة أيام فقط' });
     expect(discoveredLate.status, JSON.stringify(discoveredLate.body)).toBe(201);
-    expect((await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-3), discoveryDate: d(-5), description: 'اكتشاف قبل الوقوع' })).status).toBe(400);
+    expect((await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-3), discoveryDate: d(-5), ...inv, description: 'اكتشاف قبل الوقوع' })).status).toBe(400);
     // Art. 71: no penalty more than 30 days after the investigation ended.
-    const staleInv = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-50), discoveryDate: d(-45), investigationEndDate: d(-31), description: 'تحقيق انتهى قبل أكثر من ثلاثين يوماً' });
+    const staleInv = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-50), discoveryDate: d(-45), investigationEndDate: d(-31), investigationRecordText: inv.investigationRecordText, description: 'تحقيق انتهى قبل أكثر من ثلاثين يوماً' });
     expect(staleInv.status).toBe(400);
     expect(staleInv.body.error.details.code).toMatch(/discovery_expired|investigation_expired/);
     // Art. 70: a single violation's fine ≤ 5 days.
-    const bigFine = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'fine', fineDays: 6, violationDate: today(), discoveryDate: today(), description: 'خصم كبير' });
+    const bigFine = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'fine', fineDays: 6, violationDate: today(), discoveryDate: today(), ...inv, description: 'خصم كبير' });
     expect(bigFine.status).toBe(400);
     expect(bigFine.body.error.details.code).toBe('fine_over_max');
-    expect((await api(b.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: today(), discoveryDate: today(), description: 'زميل يحاول' })).status).toBe(403);
-    const w = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-2), discoveryDate: d(-1), investigationEndDate: today(), description: 'تأخر متكرر ثلاث مرات هذا الأسبوع رغم التنبيه الشفهي' });
+    expect((await api(b.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: today(), discoveryDate: today(), ...inv, description: 'زميل يحاول' })).status).toBe(403);
+    const w = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-2), discoveryDate: d(-1), investigationEndDate: today(), investigationRecordText: inv.investigationRecordText, description: 'تأخر متكرر ثلاث مرات هذا الأسبوع رغم التنبيه الشفهي' });
     expect(w.status, JSON.stringify(w.body)).toBe(201);
     expect(w.body.number).toMatch(/^DIS-/);
     expect(w.body.state).toBe('draft');
     expect(w.body).toMatchObject({ discoveryDate: d(-1), investigationEndDate: today() });
     // One penalty per violation: a second action on the same employee and day is refused unless declared a separate violation.
-    const dup = await api(hro).post('/hr/discipline', { employeeId: a.employeeId, kind: 'written_notice', violationDate: d(-2), discoveryDate: d(-1), description: 'نفس المخالفة بجزاء ثانٍ' });
+    const dup = await api(hro).post('/hr/discipline', { employeeId: a.employeeId, kind: 'written_notice', violationDate: d(-2), discoveryDate: d(-1), ...inv, description: 'نفس المخالفة بجزاء ثانٍ' });
     expect(dup.status).toBe(409);
     expect(dup.body.error.details.code).toBe('violation_already_penalised');
-    const separate = await api(hro).post('/hr/discipline', { employeeId: a.employeeId, kind: 'written_notice', violationDate: d(-2), discoveryDate: d(-1), separateViolation: true, description: 'مخالفة أخرى مستقلة في نفس اليوم: ترك الموقع دون إذن' });
+    const separate = await api(hro).post('/hr/discipline', { employeeId: a.employeeId, kind: 'written_notice', violationDate: d(-2), discoveryDate: d(-1), separateViolation: true, ...inv, description: 'مخالفة أخرى مستقلة في نفس اليوم: ترك الموقع دون إذن' });
     expect(separate.status).toBe(201);
     expect((await api(a.token).get('/hr/discipline')).body.items).toHaveLength(0); // nothing until delivered
     const submitted = await api(mgr.token).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'submit' });
@@ -498,10 +502,11 @@ describe('H3a §3.7 — goals linked to KPIs, appraisal cycles, scoring, approva
     expect(String(task.assigneeId)).toBe(String(hrUser._id));
     expect(riyadhDate(task.dueAt!)).toBe(d(15));
     expect(task.priority).toBe('high');
-    expect((await api(hr).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'uphold', note: 'المهمة لم تكن مسجلة' })).body.state).toBe('upheld');
+    expect((await api(hr).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'uphold' })).status).toBe(400); // from «قيد التظلم» the written decision is reject_appeal, never a direct uphold (2026-11-25)
+    expect((await api(hr).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'reject_appeal', note: 'المهمة لم تكن مسجلة' })).body.state).toBe('objection_window'); // not final yet — the court-objection window
     expect((await Task.findById(task._id).lean())!.status).toBe('done'); // the written decision closes the task
     // A fine: 2 days of wage = 2 × 800000/30; it becomes a payroll deduction once upheld (here by the employee's acknowledgement).
-    const f = await api(hr).post('/hr/discipline', { employeeId: a.employeeId, kind: 'fine', fineDays: 2, violationDate: today(), discoveryDate: today(), description: 'إتلاف عهدة بسبب الإهمال الموثق في التقرير' });
+    const f = await api(hr).post('/hr/discipline', { employeeId: a.employeeId, kind: 'fine', fineDays: 2, violationDate: today(), discoveryDate: today(), ...inv, description: 'إتلاف عهدة بسبب الإهمال الموثق في التقرير' });
     expect(f.status).toBe(201);
     expect(f.body.fineHalalas).toBe(Math.round((2 * 800_000) / 30));
     await api(hr).post(`/hr/discipline/${f.body._id}/transition`, { transition: 'submit' });
@@ -517,6 +522,186 @@ describe('H3a §3.7 — goals linked to KPIs, appraisal cycles, scoring, approva
     expect(await Outbox.countDocuments({ type: 'hr.discipline.payroll_effect' })).toBe(1);
     const rep = await api(hr).post('/export', { resource: 'hr.discipline', fields: ['number', 'fullNameAr', 'kindLabelAr', 'discoveryDate', 'stateAr', 'fine'], filters: {}, format: 'preview', limit: 50 });
     expect(rep.body.total).toBe(4); // the late-discovered draft, the warning, the separate notice, the fine
+  });
+});
+
+
+describe('H3a §3.7 — owner review 2026-11-25: the court-objection window, the escalation, the investigation record, the deadline setting, the advance notice', () => {
+  const inv = { investigationEndDate: today(), investigationRecordText: 'محضر التحقيق: استُمع إلى الموظف بحضور المشرف وأقرّ بالواقعة' };
+  const d = (n: number) => addDays(today(), n);
+  /** A one-day fine on `a`, issued by the manager, approved by HR, delivered, and appealed by the employee. */
+  async function appealedFine(t: Awaited<ReturnType<typeof setup>>, violationDate: string) {
+    const f = await api(t.mgr.token).post('/hr/discipline', { employeeId: t.a.employeeId, kind: 'fine', fineDays: 1, violationDate, discoveryDate: violationDate, ...inv, description: 'إتلاف عهدة بسبب الإهمال الموثق في التقرير' });
+    expect(f.status, JSON.stringify(f.body)).toBe(201);
+    await api(t.mgr.token).post(`/hr/discipline/${f.body._id}/transition`, { transition: 'submit' });
+    expect((await api(t.hr).post(`/hr/discipline/${f.body._id}/transition`, { transition: 'approve' })).body.state).toBe('approved');
+    expect((await api(t.hro).post(`/hr/discipline/${f.body._id}/transition`, { transition: 'deliver' })).body.state).toBe('delivered');
+    const ap = await api(t.a.token).post(`/hr/discipline/${f.body._id}/transition`, { transition: 'appeal', note: 'العهدة كانت معطوبة قبل تسلّمها' });
+    expect(ap.body.state).toBe('appealed');
+    return ap.body as { _id: string; number: string; fineHalalas: number; appealTaskId: string };
+  }
+  const fines = (id: string) => PayrollAdjustment.countDocuments({ sourceType: 'disciplinary', sourceId: id });
+
+  it('art. 72 (1) — a rejected appeal opens a 30-day court-objection window that holds the fine; «اعتراض أمام المحكمة» holds it until the ruling; the window\'s end or the ruling makes the penalty final', async () => {
+    const t = await setup();
+    const { hr, hro, a } = t;
+    // 1) Rejected → «مهلة الاعتراض أمام المحكمة», not final: no payroll adjustment, the task is closed, the employee is told the deadline.
+    const f1 = await appealedFine(t, d(-1));
+    const rejected = await api(hr).post(`/hr/discipline/${f1._id}/transition`, { transition: 'reject_appeal', note: 'التقرير الفني يثبت أن العطب حدث بعد التسلّم' });
+    expect(rejected.body.state).toBe('objection_window');
+    expect(rejected.body.appeal.outcome).toBe('rejected');
+    expect(new Date(rejected.body.courtObjectionDeadline)).toEqual(employeeDeadlineFrom(today(), 30, new Set(), true));
+    expect((await Task.findById(f1.appealTaskId).lean())!.status).toBe('done');
+    expect(await fines(f1._id)).toBe(0);
+    expect((await Notification.findOne({ userId: a.userId, type: 'discipline.appeal_rejected' }).lean())!.bodyAr).toContain('المحكمة');
+    expect(rejected.body.actions).not.toContain('finalize'); // the system's move, never a button
+    expect((await api(hr).post(`/hr/discipline/${f1._id}/transition`, { transition: 'finalize' })).status).toBe(403);
+    expect((await runPerformanceFollowUps()).finalized).toBe(0); // the window is still open
+    // 2) HR records the court objection → the fine is held even after the window would have ended; the ruling (HR manager only) ends it.
+    expect((await api(hro).post(`/hr/discipline/${f1._id}/transition`, { transition: 'court_objection', note: 'الدعوى رقم 1234/1448 — المحكمة العمالية بالرياض' })).body.state).toBe('court_objection');
+    await DisciplinaryAction.updateOne({ _id: f1._id }, { $set: { courtObjectionDeadline: new Date(Date.now() - DAY) } });
+    expect((await runPerformanceFollowUps()).finalized).toBe(0);
+    expect((await DisciplinaryAction.findById(f1._id).lean())!.state).toBe('court_objection');
+    expect(await fines(f1._id)).toBe(0);
+    expect((await api(hro).post(`/hr/discipline/${f1._id}/transition`, { transition: 'court_uphold', note: 'x' })).status).toBe(403); // hr_manager only
+    const ruled = await api(hr).post(`/hr/discipline/${f1._id}/transition`, { transition: 'court_uphold', note: 'حكم بتأييد الجزاء — صك رقم 55' });
+    expect(ruled.body.state).toBe('upheld');
+    expect(ruled.body.court).toMatchObject({ reference: 'الدعوى رقم 1234/1448 — المحكمة العمالية بالرياض', rulingOutcome: 'upheld' });
+    expect(await fines(f1._id)).toBe(1); // the fine reaches payroll only now
+    expect(await Notification.countDocuments({ userId: a.userId, type: 'discipline.final' })).toBe(1);
+    // 3) Rejected, no objection recorded, the window ends → final by the daily job, and the fine reaches payroll.
+    const f2 = await appealedFine(t, d(-2));
+    await api(hr).post(`/hr/discipline/${f2._id}/transition`, { transition: 'reject_appeal', note: 'مرفوض' });
+    await DisciplinaryAction.updateOne({ _id: f2._id }, { $set: { courtObjectionDeadline: new Date(Date.now() - DAY) } });
+    expect((await runPerformanceFollowUps()).finalized).toBe(1);
+    expect((await DisciplinaryAction.findById(f2._id).lean())!.state).toBe('upheld');
+    expect(await fines(f2._id)).toBe(1);
+    // 4) The court cancels the penalty → withdrawn, nothing deducted.
+    const f3 = await appealedFine(t, d(-3));
+    await api(hr).post(`/hr/discipline/${f3._id}/transition`, { transition: 'reject_appeal', note: 'مرفوض' });
+    await api(hro).post(`/hr/discipline/${f3._id}/transition`, { transition: 'court_objection', note: 'الدعوى 99' });
+    expect((await api(hr).post(`/hr/discipline/${f3._id}/transition`, { transition: 'court_cancel', note: 'حكم بإلغاء الجزاء' })).body.state).toBe('withdrawn');
+    expect(await fines(f3._id)).toBe(0);
+    // The employee sees his final actions on «أدائي»; the withdrawn one is not listed.
+    const mine = await api(a.token).get('/hr/discipline');
+    expect(mine.body.items.map((x: { state: string }) => x.state).sort()).toEqual(['upheld', 'upheld']);
+  });
+
+  it('art. 72 (2) — an appeal undecided after 15 days is escalated to the HR manager with a notification, and the court-objection window runs from the end of the decision window', async () => {
+    const t = await setup();
+    const { hr } = t;
+    const hrUser = (await User.findOne({ email: 'hr@eayni.local' }).lean())!;
+    const f1 = await appealedFine(t, d(-1));
+    expect((await runPerformanceFollowUps()).escalated).toBe(0); // day 15 not reached
+    // Day 15 passed two days ago without a decision.
+    await DisciplinaryAction.updateOne({ _id: f1._id }, { $set: { appealDecisionDueAt: riyadhDayEndOf(d(-2)) } });
+    expect((await runPerformanceFollowUps()).escalated).toBe(1);
+    const esc = (await DisciplinaryAction.findById(f1._id).lean())!;
+    expect(esc.state).toBe('appealed'); // the HR manager can still decide
+    expect(esc.appealEscalatedAt).toBeTruthy();
+    expect(esc.courtObjectionDeadline).toEqual(employeeDeadlineFrom(d(-2), 30, new Set(), true)); // from the end of the decision window, not from today
+    const task = (await Task.findById(f1.appealTaskId).lean())!;
+    expect(String(task.assigneeId)).toBe(String(hrUser._id));
+    expect(task.reviewNote).toContain('المادة 72');
+    expect(await TaskEvent.countDocuments({ taskId: task._id, type: 'reassigned' })).toBe(1);
+    expect((await Notification.findOne({ userId: hrUser._id, type: 'discipline.appeal_escalated' }).lean())!.bodyAr).toContain(f1.number);
+    expect((await runPerformanceFollowUps()).escalated).toBe(0); // once
+    // A late rejection keeps the earlier deadline (whichever came first).
+    const rejected = await api(hr).post(`/hr/discipline/${f1._id}/transition`, { transition: 'reject_appeal', note: 'مرفوض بعد الإحالة' });
+    expect(rejected.body.state).toBe('objection_window');
+    expect(new Date(rejected.body.courtObjectionDeadline)).toEqual(esc.courtObjectionDeadline);
+    // Never decided at all: when the court-objection window ends the penalty is final with the outcome «فاتت مهلة البت».
+    const f2 = await appealedFine(t, d(-2));
+    await DisciplinaryAction.updateOne({ _id: f2._id }, { $set: { appealDecisionDueAt: riyadhDayEndOf(d(-40)) } });
+    expect((await runPerformanceFollowUps()).escalated).toBe(1);
+    await DisciplinaryAction.updateOne({ _id: f2._id }, { $set: { courtObjectionDeadline: new Date(Date.now() - DAY) } });
+    expect((await runPerformanceFollowUps()).finalized).toBe(1);
+    const final = (await DisciplinaryAction.findById(f2._id).lean())!;
+    expect(final.state).toBe('upheld');
+    expect(final.appeal?.outcome).toBe('expired');
+    expect((await Task.findById(f2.appealTaskId).lean())!.status).toBe('cancelled');
+    expect(await fines(f2._id)).toBe(1);
+  });
+
+  it('art. 71 — every penalty needs the investigation end date and its record (text or attachment); oral questioning only for a warning or a fine of at most one day\'s wage', async () => {
+    expect(oralQuestioningAllowed('none')).toBe(true);
+    expect(oralQuestioningAllowed('fine', 1)).toBe(true);
+    expect(oralQuestioningAllowed('fine', 1.5)).toBe(false);
+    expect(oralQuestioningAllowed('suspension', undefined)).toBe(false);
+    expect(oralQuestioningAllowed('termination')).toBe(false);
+    const { hr, mgr, a } = await setup();
+    const base = { employeeId: a.employeeId, violationDate: today(), discoveryDate: today(), description: 'مخالفة موثقة في تقرير المشرف' };
+    const code = (r: { body: { error?: { details?: { code?: string } } } }) => r.body.error?.details?.code;
+    expect((await api(mgr.token).post('/hr/discipline', { ...base, kind: 'warning_1', investigationRecordText: inv.investigationRecordText })).status).toBe(400); // no end date
+    const noRecord = await api(mgr.token).post('/hr/discipline', { ...base, kind: 'warning_1', investigationEndDate: today() });
+    expect(noRecord.status).toBe(400);
+    expect(code(noRecord)).toBe('investigation_record_required');
+    expect(code(await api(mgr.token).post('/hr/discipline', { ...base, kind: 'warning_1', investigationEndDate: today(), investigationRecordText: 'قصير' }))).toBe('investigation_record_required');
+    const oralFine = await api(mgr.token).post('/hr/discipline', { ...base, kind: 'fine', fineDays: 2, investigationMode: 'oral', ...inv });
+    expect(oralFine.status).toBe(400);
+    expect(code(oralFine)).toBe('oral_not_allowed');
+    expect(code(await api(mgr.token).post('/hr/discipline', { ...base, kind: 'suspension', suspensionDays: 2, investigationMode: 'oral', ...inv }))).toBe('oral_not_allowed');
+    const oralWarning = await api(mgr.token).post('/hr/discipline', { ...base, kind: 'warning_1', investigationMode: 'oral', ...inv });
+    expect(oralWarning.status, JSON.stringify(oralWarning.body)).toBe(201);
+    expect(oralWarning.body).toMatchObject({ investigationMode: 'oral', investigationEndDate: today(), investigationRecordText: inv.investigationRecordText });
+    const oralOneDay = await api(mgr.token).post('/hr/discipline', { ...base, violationDate: d(-1), discoveryDate: d(-1), kind: 'fine', fineDays: 1, investigationMode: 'oral', ...inv });
+    expect(oralOneDay.status).toBe(201);
+    // The record may be an attachment instead of text; the mode defaults to written.
+    const attached = await api(mgr.token).post('/hr/discipline', { ...base, violationDate: d(-2), discoveryDate: d(-2), kind: 'fine', fineDays: 2, investigationEndDate: today(), investigationRecordAttachmentIds: ['6655443322110000aabbccdd'] });
+    expect(attached.status, JSON.stringify(attached.body)).toBe(201);
+    expect(attached.body.investigationMode).toBe('written');
+    const rep = await api(hr).post('/export', { resource: 'hr.discipline', fields: ['number', 'investigationEndDate', 'investigationModeAr'], filters: {}, format: 'preview', limit: 50 });
+    expect(rep.body.total).toBe(3);
+    expect(rep.body.rows.map((r: string[]) => r[2]).sort()).toEqual(['استجواب شفهي', 'استجواب شفهي', 'تحقيق كتابي']);
+  });
+
+  it('deadlines — the employee\'s (appeal, court objection) skip Friday–Saturday and the official holidays by the setting, default on; the employer\'s (arts. 71, 72 decision) stay calendar days', async () => {
+    // 2026-01-01 is a Thursday: 30 calendar days → 31 Jan; 30 working days (Sun–Thu) → 12 Feb.
+    expect(employeeDeadlineFrom('2026-01-01', 30, new Set(), false)).toEqual(new Date('2026-01-31T23:59:59.999+03:00'));
+    expect(employeeDeadlineFrom('2026-01-01', 30, new Set(), true)).toEqual(new Date('2026-02-12T23:59:59.999+03:00'));
+    expect(employeeDeadlineFrom('2026-01-01', 30, new Set(['2026-01-05']), true)).toEqual(new Date('2026-02-15T23:59:59.999+03:00')); // a holiday on a Monday adds a working day (Thu 12 → Sun 15)
+    expect(employeeDeadlineFrom('2026-01-01', 30, new Set(['2026-01-09']), true)).toEqual(new Date('2026-02-12T23:59:59.999+03:00')); // a holiday on a Friday changes nothing
+    const { hr, hro, mgr, a } = await setup();
+    const policy = await api(a.token).get('/hr/discipline/policy');
+    expect(policy.body).toMatchObject({ employeeDeadlinesExcludeWeekend: true, courtObjectionDays: 30, appealDecisionDays: 15 });
+    const issue = async (violationDate: string) => {
+      const w = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate, discoveryDate: violationDate, ...inv, description: 'تأخر متكرر موثق' });
+      expect(w.status, JSON.stringify(w.body)).toBe(201);
+      await api(mgr.token).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'submit' });
+      await api(hr).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'approve' });
+      return (await api(hro).post(`/hr/discipline/${w.body._id}/transition`, { transition: 'deliver' })).body as { _id: string; appealDeadline: string };
+    };
+    const w1 = await issue(d(-1));
+    expect(new Date(w1.appealDeadline)).toEqual(employeeDeadlineFrom(today(), 30, new Set(), true));
+    expect(new Date(w1.appealDeadline).getTime()).toBeGreaterThan(riyadhDayEndOf(d(30)).getTime()); // 30 working days are more than 30 calendar days
+    // The employer's 15 days to decide are calendar days whatever the setting.
+    const ap = await api(a.token).post(`/hr/discipline/${w1._id}/transition`, { transition: 'appeal', note: 'لم أتأخر' });
+    expect(riyadhDate(new Date(ap.body.appealDecisionDueAt))).toBe(d(15));
+    // Setting off → holidays only.
+    await setSetting('hr.discipline', { ...DEFAULT_DISCIPLINE_POLICY, employeeDeadlinesExcludeWeekend: false }, SYSTEM_ACTOR);
+    const w2 = await issue(d(-2));
+    expect(riyadhDate(new Date(w2.appealDeadline))).toBe(d(30));
+    // Art. 71 stays calendar: a discovery 31 days ago is refused although fewer than 31 working days passed.
+    const old = await api(mgr.token).post('/hr/discipline', { employeeId: a.employeeId, kind: 'warning_1', violationDate: d(-31), discoveryDate: d(-31), ...inv, description: 'اكتُشفت قبل 31 يوماً' });
+    expect(old.status).toBe(400);
+    expect(old.body.error.details.code).toBe('discovery_expired');
+  });
+
+  it('advances — when the server re-splits the instalments the employee is told the new schedule (count and amount per instalment)', async () => {
+    const { a } = await setup(); // wage 8 000 SAR → cap 800 per instalment
+    const split = await api(a.token).post('/hr/requests', { type: 'advance', details: { amountHalalas: 240_000, reason: 'علاج', instalments: 1 }, attachmentIds: [] });
+    expect(split.status, JSON.stringify(split.body)).toBe(201);
+    expect(split.body.details).toMatchObject({ instalments: 3, instalmentHalalas: 80_000 });
+    const n = (await Notification.findOne({ userId: a.userId, type: 'request.instalments_rescheduled' }).lean())!;
+    expect(n).toBeTruthy();
+    expect(n.bodyAr).toContain(split.body.number);
+    expect(n.bodyAr).toContain('3 أقساط');
+    expect(n.bodyAr).toContain('800');
+    expect(n.link).toBe(`/me/requests/${split.body._id}`);
+    // With the written consent, or within the cap, nothing is re-split and nothing is sent.
+    await api(a.token).post('/hr/requests', { type: 'advance', details: { amountHalalas: 240_000, reason: 'علاج', instalments: 1, scheduleConsent: true }, attachmentIds: [] });
+    await api(a.token).post('/hr/requests', { type: 'advance', details: { amountHalalas: 90_000, reason: 'سفر', instalments: 3 }, attachmentIds: [] });
+    expect(await Notification.countDocuments({ userId: a.userId, type: 'request.instalments_rescheduled' })).toBe(1);
   });
 });
 

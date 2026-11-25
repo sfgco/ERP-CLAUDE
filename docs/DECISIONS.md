@@ -2,7 +2,7 @@
 
 Answers from the product owner (Saud, IT) that settle what `docs/SPECS.md` leaves open or where two specs disagree. This file **overrides the defaults in `CLAUDE.md`**. Every decision cites the spec sections it settles. Dates are Gregorian.
 
-Last updated: 2026-11-24 (H3a review).
+Last updated: 2026-11-25 (H3a second review).
 
 ## 1. Infrastructure and accounts — not decided yet
 - AWS account, hosting region and data-residency requirement, MongoDB Atlas cluster, staging domain, email sending domain and brand assets are **not decided**.
@@ -439,6 +439,18 @@ Also requested for H3a: **the lateness rule becomes a provisional setting** — 
 **Overtime (art. 107) — formula corrected:** the hour was basic ÷ 30 ÷ daily hours × 150 %; it is now **actual wage ÷ 30 ÷ daily hours + 50 % × basic ÷ 30 ÷ daily hours** (`overtimeHourHalalas`; the premium is `hr.overtime.rateBp` − 100 %). Owner's example in the test: basic 4 000 + allowances 2 000, 8 h → **33.33 SAR** per hour (never 6 000 × 1.5 ÷ 240 = 37.50). With no allowances the result equals the old one.
 
 Test counts after the review: API 249 → **252** (hr-h3a.test.ts 5 → 8), web 57 (the request-form test extended).
+
+### H3a second review — four more fixes (2026-11-25, branch `hr-h3a`, before the merge)
+**Owner review (2026-11-25):** the 2026-11-24 changes approved («they look great»), with four fixes applied on `hr-h3a`, each with a test in `hr-h3a.test.ts` («H3a §3.7 — owner review 2026-11-25»), then the fast-forward merge into `main` and the start of H3b.
+
+1. **Grievance flow after rejection or timeout (art. 72).** The written rejection of an appeal (`reject_appeal`, approver / HR manager) does **not** make the penalty final: the action enters **«مهلة الاعتراض أمام المحكمة»** (`objection_window`) for **`courtObjectionDays` = 30 employee days** counted from the rejection date **or from the end of the 15-day decision window, whichever came first** (`courtObjectionDeadline`); the daily job then finalises it (`finalize`, system only → `upheld`, the fine reaches payroll only now). **«اعتراض أمام المحكمة»** (`court_objection`, HR officer / manager, with the case reference) holds the deduction until the ruling is recorded: `court_uphold` → `upheld` (fine to payroll) or `court_cancel` → `withdrawn` (HR manager only, with the ruling reference). **A decision task past day 15 is escalated**: the job stamps `appealEscalatedAt`, moves the task to an HR manager (task event `reassigned`, note in `reviewNote`), notifies the HR managers (`discipline.appeal_escalated`) and starts the court window from the end of the decision window; a later rejection keeps that earlier deadline; an appeal never decided becomes final when the window ends (`appeal.outcome: expired`, task cancelled). The direct `uphold` from «قيد التظلم» is gone (400); the no-appeal path (`delivered` → `upheld` after the appeal window or by acknowledgement) is unchanged. Workflow `hr_disciplinary` **v2**. Notifications: `discipline.appeal_rejected` (to the employee, with the court deadline), `discipline.appeal_escalated`, `discipline.court_objection`, `discipline.final`.
+2. **Investigation (art. 71).** `investigationEndDate` is **mandatory** on every penalty, with the **investigation record (محضر التحقيق)** as text (≥ 10 characters, `investigationRecordText`) or attachment (`investigationRecordAttachmentIds`) — one of the two is required (`investigation_record_required`). `investigationMode` = `written` (default) | `oral`; **oral questioning is accepted only for a warning (no payroll effect) or a fine of at most one day's wage** (`oral_not_allowed` otherwise) and is still documented in the record. The export `hr.discipline` gained «تاريخ انتهاء التحقيق», «طريقة التحقيق», «آخر موعد للاعتراض أمام المحكمة».
+3. **Deadline calculation.** New setting **`employeeDeadlinesExcludeWeekend`** (default **on**) in `hr.discipline`: the **employee's** deadlines — the 30-day appeal window and the 30-day court-objection window — skip **Friday–Saturday as well as the official holidays** of the `holidays` table (`employeeDeadlineFrom`; e.g. 30 days from Thu 2026-01-01 → 12 Feb, not 31 Jan). The **employer's** deadlines stay **calendar days**: 30 days from the discovery and 30 days from the investigation's end (art. 71), 15 days to decide an appeal (art. 72). «Official holidays» = the holiday table (approved).
+4. **Advances.** When the server re-splits an advance (`instalments_rescheduled`) the employee is notified (`request.instalments_rescheduled`) with the number of instalments and the amount per instalment, and how to get a higher instalment (resubmit with the written consent).
+
+**Open item (owner 2026-11-25):** Sales commissions enter the GOSI wage from the «عمولة» allowance type on the employee file **until the Sales commission payroll exists**; link `gosiCommissionAllowanceTypes` / `gosiWageOf` to that run when it is built (Sales phase or Finance).
+
+Test counts after the second review: API 252 → **257** (hr-h3a.test.ts 8 → 13), web 57 → **58** (investigation-mode label parity).
 
 ## Still open (ask before building)
 Everything in the "Open decisions" section of `CLAUDE.md` that is not settled above, notably: accounting depth / general ledger, ZATCA route and wave, financial authority matrix and monthly cut-off, customer app and company portal, offline support for field staff, discount limits, points and rewards policy, certificate weight criterion, impact factors, organization-type list (SAL §4.1 vs CS §6.8), Finance-stage state labels in other modules (FIN §5 vs PRC §4 and MKT §8).

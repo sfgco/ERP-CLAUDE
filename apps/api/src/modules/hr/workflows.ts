@@ -61,7 +61,7 @@ export const APPRAISAL_WORKFLOW: WorkflowDefinitionInput = {
 export const DISCIPLINARY_WORKFLOW: WorkflowDefinitionInput = {
   type: 'hr_disciplinary',
   nameAr: 'إجراء إداري',
-  version: 1,
+  version: 2, // v2 (owner review 2026-11-25, art. 72): the appeal's rejection opens the court-objection window; «اعتراض أمام المحكمة» holds the penalty until the ruling
   initialState: 'draft',
   states: {
     draft: { labelAr: DISCIPLINARY_STATE_AR.draft, category: 'open', owner: 'requester' },
@@ -69,6 +69,8 @@ export const DISCIPLINARY_WORKFLOW: WorkflowDefinitionInput = {
     approved: { labelAr: DISCIPLINARY_STATE_AR.approved, category: 'open', owner: 'department' },
     delivered: { labelAr: DISCIPLINARY_STATE_AR.delivered, category: 'open', owner: 'requester' },
     appealed: { labelAr: DISCIPLINARY_STATE_AR.appealed, category: 'open', slaBusinessDays: 5, owner: 'approver' },
+    objection_window: { labelAr: DISCIPLINARY_STATE_AR.objection_window, category: 'waiting', owner: 'department' },
+    court_objection: { labelAr: DISCIPLINARY_STATE_AR.court_objection, category: 'waiting', owner: 'department' },
     upheld: { labelAr: DISCIPLINARY_STATE_AR.upheld, category: 'done' },
     withdrawn: { labelAr: DISCIPLINARY_STATE_AR.withdrawn, category: 'cancelled' },
   },
@@ -79,8 +81,16 @@ export const DISCIPLINARY_WORKFLOW: WorkflowDefinitionInput = {
     { code: 'deliver', labelAr: 'إبلاغ الموظف كتابياً', from: ['approved'], to: 'delivered', allow: ['hr_officer', 'hr_manager'] },
     { code: 'acknowledge', labelAr: 'إقرار الموظف بالاستلام', from: ['delivered'], to: 'upheld', allow: ['subject'] },
     { code: 'appeal', labelAr: 'تظلم الموظف', from: ['delivered'], to: 'appealed', allow: ['subject'], requireReason: true },
-    { code: 'uphold', labelAr: 'تثبيت الإجراء', from: ['appealed', 'delivered'], to: 'upheld', allow: ['approver', 'system'] },
-    { code: 'withdraw', labelAr: 'سحب الإجراء', from: ['appealed', 'approved', 'delivered', 'draft', 'pending_approval'], to: 'withdrawn', allow: ['approver', 'hr_manager'], requireReason: true },
+    // No appeal inside the window → final (the daily job, or the approver).
+    { code: 'uphold', labelAr: 'تثبيت الإجراء', from: ['delivered'], to: 'upheld', allow: ['approver', 'system'] },
+    // Art. 72: the written rejection of the appeal opens the employee's window to object before the labour court; the penalty is not final yet.
+    { code: 'reject_appeal', labelAr: 'رفض التظلم كتابياً', from: ['appealed'], to: 'objection_window', allow: ['approver', 'hr_manager'], requireReason: true },
+    { code: 'withdraw', labelAr: 'سحب الإجراء', from: ['appealed', 'objection_window', 'approved', 'delivered', 'draft', 'pending_approval'], to: 'withdrawn', allow: ['approver', 'hr_manager'], requireReason: true },
+    { code: 'court_objection', labelAr: 'تسجيل اعتراض أمام المحكمة', from: ['objection_window', 'appealed'], to: 'court_objection', allow: ['hr_officer', 'hr_manager'], requireReason: true },
+    { code: 'court_uphold', labelAr: 'حكم المحكمة: تأييد الجزاء', from: ['court_objection'], to: 'upheld', allow: ['hr_manager'], requireReason: true },
+    { code: 'court_cancel', labelAr: 'حكم المحكمة: إلغاء الجزاء', from: ['court_objection'], to: 'withdrawn', allow: ['hr_manager'], requireReason: true },
+    // The court-objection window ended without an objection (system only, checked in the service).
+    { code: 'finalize', labelAr: 'انتهاء مهلة الاعتراض — الجزاء نهائي', from: ['objection_window', 'appealed'], to: 'upheld', allow: ['system', 'hr_manager'] },
   ],
 };
 

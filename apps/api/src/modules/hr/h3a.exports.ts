@@ -2,6 +2,7 @@ import {
   APPRAISAL_STATE_AR,
   DISCIPLINARY_STATE_AR,
   GOAL_STATE_AR,
+  INVESTIGATION_MODE_AR,
   PARTICIPANT_STATUS_AR,
   PAYROLL_RUN_STATE_AR,
   TRAINING_KIND_AR,
@@ -9,6 +10,7 @@ import {
   type AppraisalState,
   type DisciplinaryState,
   type GoalState,
+  type InvestigationMode,
   type ParticipantStatus,
   type PayrollRunState,
   type TrainingState,
@@ -244,6 +246,9 @@ export function registerH3aExports(): void {
         { key: 'kindLabelAr', labelAr: 'نوع الإجراء' },
         { key: 'violationDate', labelAr: 'تاريخ المخالفة' },
         { key: 'discoveryDate', labelAr: 'تاريخ اكتشاف المخالفة' },
+        { key: 'investigationEndDate', labelAr: 'تاريخ انتهاء التحقيق' },
+        { key: 'investigationModeAr', labelAr: 'طريقة التحقيق' },
+        { key: 'courtObjectionDeadline', labelAr: 'آخر موعد للاعتراض أمام المحكمة' },
         { key: 'description', labelAr: 'الوصف', sensitive: true },
         { key: 'stateAr', labelAr: 'الحالة' },
         { key: 'fine', labelAr: 'الخصم', sensitive: true, kind: 'money' },
@@ -261,7 +266,7 @@ export function registerH3aExports(): void {
         const en = new Map(employees.map((e) => [String(e._id), e]));
         return rows.map((d) => {
           const e = en.get(String(d.employeeId));
-          return { number: d.number, employeeNumber: e?.employeeNumber ?? '', fullNameAr: e?.fullNameAr ?? '', departmentName: e ? (dn.get(String(e.departmentId)) ?? '') : '', kindLabelAr: d.kindLabelAr, violationDate: d.violationDate, discoveryDate: d.discoveryDate ?? '', description: d.description, stateAr: DISCIPLINARY_STATE_AR[d.state as DisciplinaryState], fine: riyals(d.fineHalalas), deliveredAt: d.deliveredAt ?? '', appealOutcome: d.appeal?.outcome ?? '' };
+          return { number: d.number, employeeNumber: e?.employeeNumber ?? '', fullNameAr: e?.fullNameAr ?? '', departmentName: e ? (dn.get(String(e.departmentId)) ?? '') : '', kindLabelAr: d.kindLabelAr, violationDate: d.violationDate, discoveryDate: d.discoveryDate ?? '', investigationEndDate: d.investigationEndDate ?? '', investigationModeAr: d.investigationMode ? INVESTIGATION_MODE_AR[d.investigationMode as InvestigationMode] : '', courtObjectionDeadline: d.courtObjectionDeadline ?? '', description: d.description, stateAr: DISCIPLINARY_STATE_AR[d.state as DisciplinaryState], fine: riyals(d.fineHalalas), deliveredAt: d.deliveredAt ?? '', appealOutcome: d.appeal?.outcome ?? '' };
         });
       },
     },

@@ -155,7 +155,7 @@ export const improvementCloseSchema = z.object({
 });
 
 // ---------- disciplinary actions («الإنذارات والإجراءات الإدارية») ----------
-export const DISCIPLINARY_STATES = ['draft', 'pending_approval', 'approved', 'delivered', 'appealed', 'upheld', 'withdrawn'] as const;
+export const DISCIPLINARY_STATES = ['draft', 'pending_approval', 'approved', 'delivered', 'appealed', 'objection_window', 'court_objection', 'upheld', 'withdrawn'] as const;
 export type DisciplinaryState = (typeof DISCIPLINARY_STATES)[number];
 export const DISCIPLINARY_STATE_AR: Record<DisciplinaryState, string> = {
   draft: 'مسودة',
@@ -163,10 +163,16 @@ export const DISCIPLINARY_STATE_AR: Record<DisciplinaryState, string> = {
   approved: 'معتمد',
   delivered: 'تم إبلاغ الموظف',
   appealed: 'قيد التظلم',
+  objection_window: 'مهلة الاعتراض أمام المحكمة',
+  court_objection: 'اعتراض أمام المحكمة',
   upheld: 'مثبت',
   withdrawn: 'مسحوب',
 };
 export const DISCIPLINARY_EFFECTS = ['none', 'fine', 'suspension', 'termination'] as const;
+/** Art. 71 (owner decision 2026-11-25): every penalty follows an investigation whose record is kept; oral questioning only for a warning or a fine ≤ one day's wage. */
+export const INVESTIGATION_MODES = ['written', 'oral'] as const;
+export type InvestigationMode = (typeof INVESTIGATION_MODES)[number];
+export const INVESTIGATION_MODE_AR: Record<InvestigationMode, string> = { written: 'تحقيق كتابي', oral: 'استجواب شفهي' };
 export const disciplineLadderStepSchema = z.object({
   code: z.string().trim().min(1).max(40),
   labelAr: z.string().trim().min(1).max(120),
@@ -185,10 +191,18 @@ export const disciplinePolicySchema = z.object({
   /**
    * Days the employee has to object after the written notice — art. 72 (owner decision 2026-11-24: 30 days, official
    * holidays excluded, counted from the delivery date); the penalty is confirmed when the window ends without an appeal.
+   * An *employee* deadline: counted over the `holidays` collection and, when `employeeDeadlinesExcludeWeekend` is on, over the weekend too.
    */
   appealDays: z.number().int().min(1).max(90),
-  /** Days the approver has to decide an appeal in writing (art. 72: 15); the decision is a task with that deadline. */
+  /** Days the approver has to decide an appeal in writing (art. 72: 15) — an *employer* deadline, calendar days; the decision is a task with that deadline, escalated to the HR manager when it passes. */
   appealDecisionDays: z.number().int().min(1).max(90),
+  /**
+   * Owner decision 2026-11-25 (art. 72): after the appeal is rejected — or the decision window passes undecided, whichever
+   * comes first — the penalty waits this many *employee* days for an objection before the labour court, then becomes final.
+   */
+  courtObjectionDays: z.number().int().min(1).max(120),
+  /** Owner decision 2026-11-25: the employee's deadlines (appeal, court objection) skip Friday–Saturday as well as the official holidays. The employer's deadlines (arts. 71, 72 decision) stay calendar days. */
+  employeeDeadlinesExcludeWeekend: z.boolean(),
   /** A penalty for a violation *discovered* more than N days ago is refused (art. 71: 30, from the discovery date). */
   violationDiscoveryDays: z.number().int().min(1).max(365),
   /** No penalty may be signed more than N days after the investigation ended and the violation was established (art. 71: 30). */
@@ -213,6 +227,8 @@ export const DEFAULT_DISCIPLINE_POLICY: DisciplinePolicy = {
   ],
   appealDays: 30,
   appealDecisionDays: 15,
+  courtObjectionDays: 30,
+  employeeDeadlinesExcludeWeekend: true,
   violationDiscoveryDays: 30,
   investigationSignDays: 30,
   maxFineDaysPerViolation: 5,
@@ -226,8 +242,13 @@ export const createDisciplinarySchema = z.object({
   violationDate: riyadhDaySchema,
   /** When the employer learned of the violation (art. 71: the 30 days run from here, not from the violation). */
   discoveryDate: riyadhDaySchema,
-  /** When the investigation ended and the violation was established (art. 71: the penalty must be signed within 30 days of it). */
-  investigationEndDate: riyadhDaySchema.optional(),
+  /** When the investigation ended and the violation was established (art. 71: the penalty must be signed within 30 days of it). Mandatory (owner decision 2026-11-25). */
+  investigationEndDate: riyadhDaySchema,
+  /** `oral` is accepted only for a warning (no payroll effect) or a fine of at most one day's wage; it is still documented in the record. */
+  investigationMode: z.enum(INVESTIGATION_MODES).default('written'),
+  /** محضر التحقيق: its text or an attachment — one of the two is required. */
+  investigationRecordText: z.string().trim().max(5000).optional(),
+  investigationRecordAttachmentIds: z.array(objectIdSchema).default([]),
   description: z.string().trim().min(5).max(3000),
   evidenceAttachmentIds: z.array(objectIdSchema).default([]),
   /** For a fine: the days of wage to deduct (≤ `maxFineDaysPerViolation`, art. 70). */
@@ -238,7 +259,7 @@ export const createDisciplinarySchema = z.object({
 });
 export type CreateDisciplinaryInput = z.infer<typeof createDisciplinarySchema>;
 export const disciplinaryTransitionSchema = z.object({
-  transition: z.enum(['submit', 'approve', 'reject', 'deliver', 'acknowledge', 'appeal', 'uphold', 'withdraw']),
+  transition: z.enum(['submit', 'approve', 'reject', 'deliver', 'acknowledge', 'appeal', 'uphold', 'reject_appeal', 'withdraw', 'court_objection', 'court_uphold', 'court_cancel', 'finalize']),
   note: z.string().trim().max(2000).optional(),
 });
 

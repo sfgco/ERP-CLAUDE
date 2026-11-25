@@ -76,7 +76,7 @@ export async function seedH3a(): Promise<{ runs: number; appraisals: number; tra
     await perf.transitionAppraisal(r.appraisal, 'approve', { user: noura, actor: actorOf(noura) });
     await perf.createImprovementPlan({ employeeId: String(rashed._id), appraisalId: String(apprRashed._id), from: today, to: addDays(today, 90), objectives: [{ text: 'الالتزام بمواعيد الحضور', measure: 'لا تأخير خلال 30 يوماً' }, { text: 'تسليم تقارير الرحلات في يومها' }] }, khalid, actorOf(khalid));
   }
-  const warning = await perf.createDisciplinary({ employeeId: String(yousef._id), kind: 'written_notice', violationDate: addDays(today, -3), discoveryDate: addDays(today, -2), description: 'التأخر عن الدوام الميداني ثلاث مرات في أسبوع واحد رغم التنبيه الشفهي', evidenceAttachmentIds: [] }, khalid, actorOf(khalid));
+  const warning = await perf.createDisciplinary({ employeeId: String(yousef._id), kind: 'written_notice', violationDate: addDays(today, -3), discoveryDate: addDays(today, -2), investigationEndDate: addDays(today, -1), investigationMode: 'oral', investigationRecordText: 'استُجوب الموظف شفهياً بحضور مشرف الموقع؛ أقرّ بالتأخر وعزاه إلى ظرف مواصلات', investigationRecordAttachmentIds: [], description: 'التأخر عن الدوام الميداني ثلاث مرات في أسبوع واحد رغم التنبيه الشفهي', evidenceAttachmentIds: [] }, khalid, actorOf(khalid));
   let d = await perf.transitionDisciplinary(warning, 'submit', { user: khalid, actor: actorOf(khalid) });
   d = await perf.transitionDisciplinary(d, 'approve', { user: noura, actor: actorOf(noura) });
   await perf.transitionDisciplinary(d, 'deliver', { user: sara, actor: actorOf(sara) });

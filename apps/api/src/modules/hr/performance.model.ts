@@ -4,6 +4,7 @@ import {
   APPRAISAL_CYCLE_STATES,
   APPRAISAL_STATES,
   DISCIPLINARY_STATES,
+  INVESTIGATION_MODES,
   GOAL_STATES,
   IMPROVEMENT_PLAN_STATES,
 } from '@eayni/shared';
@@ -175,6 +176,10 @@ const disciplinaryActionSchema = new Schema(
     /** Art. 71 (owner decision 2026-11-24): the 30 days run from the discovery, and the penalty is signed within 30 days of the investigation's end. */
     discoveryDate: { type: String },
     investigationEndDate: { type: String },
+    /** Art. 71 (owner decision 2026-11-25): the investigation record (محضر التحقيق) — text or attachment — and whether it was a written investigation or an oral questioning. */
+    investigationMode: { type: String, enum: INVESTIGATION_MODES, default: 'written' },
+    investigationRecordText: { type: String },
+    investigationRecordAttachmentIds: { type: [Schema.Types.ObjectId], default: [] },
     separateViolation: { type: Boolean },
     description: { type: String, required: true },
     evidenceAttachmentIds: { type: [Schema.Types.ObjectId], default: [] },
@@ -192,6 +197,14 @@ const disciplinaryActionSchema = new Schema(
     /** Art. 72: the written decision on an appeal is due within `appealDecisionDays`; `appealTaskId` is the approver's task. */
     appealDecisionDueAt: { type: Date },
     appealTaskId: { type: Schema.Types.ObjectId, ref: 'Task' },
+    /** The decision task passed `appealDecisionDays` undecided and was escalated to the HR manager (owner decision 2026-11-25). */
+    appealEscalatedAt: { type: Date },
+    /**
+     * Art. 72 (owner decision 2026-11-25): the employee may object before the labour court for `courtObjectionDays` from the
+     * rejection of the appeal or from the end of the decision window, whichever comes first; the penalty becomes final after it.
+     */
+    courtObjectionDeadline: { type: Date },
+    court: { filedAt: Date, filedBy: Schema.Types.ObjectId, reference: String, rulingAt: Date, rulingBy: Schema.Types.ObjectId, rulingOutcome: String, rulingNote: String },
     employeeAck: { at: Date, note: String },
     appeal: { at: Date, note: String, outcome: String, decidedBy: Schema.Types.ObjectId, decidedAt: Date, decisionNote: String },
     payrollAdjustmentId: { type: Schema.Types.ObjectId, ref: 'PayrollAdjustment' },

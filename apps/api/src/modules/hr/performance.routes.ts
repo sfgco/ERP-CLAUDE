@@ -62,7 +62,7 @@ performanceRouter.get(
       Goal.find({ employeeId: e._id, deletedAt: null }).sort({ createdAt: -1 }).lean(),
       Appraisal.find({ employeeId: e._id, state: { $in: ['approved', 'acknowledged'] } }).sort({ approvedAt: -1 }).lean(),
       ImprovementPlan.find({ employeeId: e._id }).sort({ createdAt: -1 }).lean(),
-      DisciplinaryAction.find({ employeeId: e._id, deletedAt: null, state: { $in: ['delivered', 'appealed', 'upheld'] } }).sort({ deliveredAt: -1 }).lean(),
+      DisciplinaryAction.find({ employeeId: e._id, deletedAt: null, state: { $in: ['delivered', 'appealed', 'objection_window', 'court_objection', 'upheld'] } }).sort({ deliveredAt: -1 }).lean(),
     ]);
     const cycles = await AppraisalCycle.find({ _id: { $in: appraisals.map((a) => a.cycleId) } }).select('nameAr year kind').lean();
     const cycleName = new Map(cycles.map((c) => [String(c._id), c.nameAr]));
@@ -367,7 +367,7 @@ disciplineRouter.get(
     if (ids) f.employeeId = { $in: ids };
     if (typeof req.query.state === 'string') f.state = req.query.state;
     // An employee sees only what was delivered to them (HR_PLAN §6).
-    if (req.authz!.scope === 'own') f.state = { $in: ['delivered', 'appealed', 'upheld'] };
+    if (req.authz!.scope === 'own') f.state = { $in: ['delivered', 'appealed', 'objection_window', 'court_objection', 'upheld'] };
     const items = await DisciplinaryAction.find(f).sort({ createdAt: -1 }).limit(500).lean();
     const names = await employeeNames(items.map((d) => d.employeeId));
     if (req.authz!.scope !== 'own' && items.length) await recordAudit(actorFrom(req), { action: 'view', resource: 'hr.discipline', sensitive: true, meta: { count: items.length } });
@@ -391,7 +391,7 @@ async function visibleAction(req: AuthedRequest, id: string) {
   const { policy } = await perf.disciplinePolicy();
   const rel = await perf.relationsForDiscipline(req.auth.user, d, policy);
   if (rel.includes('subject')) {
-    if (!['delivered', 'appealed', 'upheld'].includes(d.state)) throw notFound('الإجراء غير موجود');
+    if (!['delivered', 'appealed', 'objection_window', 'court_objection', 'upheld'].includes(d.state)) throw notFound('الإجراء غير موجود');
     return { d, rel };
   }
   if (!rel.includes('issuer') && !rel.includes('approver') && !(await allInScope(req, [String(d.employeeId)]))) throw notFound('الإجراء غير موجود');

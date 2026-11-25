@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { DISCIPLINARY_STATES } from '@eayni/shared';
+import { DISCIPLINARY_STATES, INVESTIGATION_MODES } from '@eayni/shared';
 import { ApiError, get, post } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { usePrefs } from '@/lib/preferences';
@@ -19,6 +19,8 @@ interface Policy {
   ladder: { code: string; labelAr: string; order: number; payrollEffect: string; maxFineDaysPerMonth: number | null; maxSuspensionDays: number | null; articleAr?: string }[];
   appealDays: number;
   appealDecisionDays: number;
+  courtObjectionDays: number;
+  employeeDeadlinesExcludeWeekend: boolean;
   violationDiscoveryDays: number;
   investigationSignDays: number;
   maxFineDaysPerViolation: number;
@@ -38,7 +40,7 @@ export function DisciplinePage() {
   const policy = useQuery({ queryKey: ['discipline', 'policy'], queryFn: () => get<Policy>('/hr/discipline/policy') });
   const [state, setState] = useState('');
   const q = useQuery({ queryKey: ['discipline', 'list', state], queryFn: () => get<{ items: DisciplinaryRow[] }>(`/hr/discipline${state ? `?state=${state}` : ''}`) });
-  const [form, setForm] = useState<{ employeeId: string; kind: string; violationDate: string; discoveryDate: string; investigationEndDate: string; separateViolation: boolean; description: string; fineDays: string; suspensionDays: string; evidence: { attachmentId: string; fileName: string }[] } | null>(null);
+  const [form, setForm] = useState<{ employeeId: string; kind: string; violationDate: string; discoveryDate: string; investigationEndDate: string; investigationMode: 'written' | 'oral'; investigationRecordText: string; record: { attachmentId: string; fileName: string }[]; separateViolation: boolean; description: string; fineDays: string; suspensionDays: string; evidence: { attachmentId: string; fileName: string }[] } | null>(null);
   const [duplicate, setDuplicate] = useState(false);
   const create = useMutation({
     mutationFn: () =>
@@ -47,7 +49,10 @@ export function DisciplinePage() {
         kind: form!.kind,
         violationDate: form!.violationDate,
         discoveryDate: form!.discoveryDate,
-        investigationEndDate: form!.investigationEndDate || undefined,
+        investigationEndDate: form!.investigationEndDate,
+        investigationMode: form!.investigationMode,
+        investigationRecordText: form!.investigationRecordText.trim() || undefined,
+        investigationRecordAttachmentIds: form!.record.map((a) => a.attachmentId),
         separateViolation: form!.separateViolation || undefined,
         description: form!.description,
         fineDays: form!.fineDays ? Number(form!.fineDays) : undefined,
@@ -67,13 +72,16 @@ export function DisciplinePage() {
     },
   });
   const step = policy.data?.ladder.find((s) => s.code === form?.kind);
+  // Art. 71 (owner 2026-11-25): oral questioning only for a warning or a fine of at most one day's wage.
+  const oralAllowed = !!step && (step.payrollEffect === 'none' || (step.payrollEffect === 'fine' && Number(form?.fineDays || 0) <= 1));
+  const recordGiven = !!form && (form.investigationRecordText.trim().length >= 10 || form.record.length > 0);
   const candidates = can('hr.discipline', 'edit') ? lk.employees : (team.data?.items ?? []).map((m) => ({ _id: m._id, fullNameAr: m.fullNameAr, employeeNumber: m.employeeNumber }));
   return (
     <>
       <PageHeader
         title={t('discipline.title')}
-        subtitle={t('discipline.hint', { days: policy.data?.appealDays ?? 30, decision: policy.data?.appealDecisionDays ?? 15, discovery: policy.data?.violationDiscoveryDays ?? 30, fineDays: policy.data?.maxFineDaysPerViolation ?? 5 })}
-        actions={can('hr.discipline', 'create') && <Button onClick={() => setForm({ employeeId: '', kind: policy.data?.ladder[0]?.code ?? '', violationDate: riyadhToday(), discoveryDate: riyadhToday(), investigationEndDate: '', separateViolation: false, description: '', fineDays: '', suspensionDays: '', evidence: [] })}>{t('discipline.new')}</Button>}
+        subtitle={t('discipline.hint', { days: policy.data?.appealDays ?? 30, decision: policy.data?.appealDecisionDays ?? 15, court: policy.data?.courtObjectionDays ?? 30, discovery: policy.data?.violationDiscoveryDays ?? 30, fineDays: policy.data?.maxFineDaysPerViolation ?? 5, excluded: policy.data?.employeeDeadlinesExcludeWeekend === false ? t('discipline.excludedHolidays') : t('discipline.excludedHolidaysWeekend') })}
+        actions={can('hr.discipline', 'create') && <Button onClick={() => setForm({ employeeId: '', kind: policy.data?.ladder[0]?.code ?? '', violationDate: riyadhToday(), discoveryDate: riyadhToday(), investigationEndDate: riyadhToday(), investigationMode: 'written', investigationRecordText: '', record: [], separateViolation: false, description: '', fineDays: '', suspensionDays: '', evidence: [] })}>{t('discipline.new')}</Button>}
       />
       {policy.data?.provisional && <Alert kind="warning">{t('discipline.provisional')}</Alert>}
       <Card className="mt-3" title={t('discipline.ladder')}>
@@ -174,8 +182,28 @@ export function DisciplinePage() {
                 <Input type="date" dir="ltr" value={form.discoveryDate} min={form.violationDate} onChange={(e) => setForm({ ...form, discoveryDate: e.target.value })} required />
               </Field>
             </div>
-            <Field label={t('discipline.investigationEndDate')} hint={t('discipline.investigationHint', { n: policy.data?.investigationSignDays ?? 30 })}>
-              <Input type="date" dir="ltr" value={form.investigationEndDate} min={form.discoveryDate} onChange={(e) => setForm({ ...form, investigationEndDate: e.target.value })} />
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t('discipline.investigationEndDate')} required hint={t('discipline.investigationHint', { n: policy.data?.investigationSignDays ?? 30 })}>
+                <Input type="date" dir="ltr" value={form.investigationEndDate} min={form.discoveryDate} onChange={(e) => setForm({ ...form, investigationEndDate: e.target.value })} required />
+              </Field>
+              <Field label={t('discipline.investigationMode')} required hint={form.investigationMode === 'oral' ? t('discipline.oralHint') : undefined}>
+                <Select value={form.investigationMode} onChange={(e) => setForm({ ...form, investigationMode: e.target.value as 'written' | 'oral' })}>
+                  {INVESTIGATION_MODES.map((m) => (
+                    <option key={m} value={m} disabled={m === 'oral' && !oralAllowed}>
+                      {t(`discipline.investigationModes.${m}`)}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+            <Field label={t('discipline.investigationRecord')} required hint={t('discipline.investigationRecordHint')}>
+              <Textarea rows={3} value={form.investigationRecordText} onChange={(e) => setForm({ ...form, investigationRecordText: e.target.value })} />
+              <FileUploader onUploaded={(a) => setForm({ ...form, record: [...form.record, a] })} />
+              {form.record.map((a) => (
+                <div key={a.attachmentId} className="text-xs text-slate-600">
+                  {a.fileName}
+                </div>
+              ))}
             </Field>
             {duplicate && (
               <Alert kind="warning">
@@ -199,7 +227,7 @@ export function DisciplinePage() {
               <Button type="button" variant="secondary" onClick={() => setForm(null)}>
                 {t('actions.cancel')}
               </Button>
-              <Button type="submit" loading={create.isPending} disabled={!form.employeeId || !form.kind || form.description.trim().length < 5}>
+              <Button type="submit" loading={create.isPending} disabled={!form.employeeId || !form.kind || form.description.trim().length < 5 || !form.investigationEndDate || !recordGiven || (form.investigationMode === 'oral' && !oralAllowed)}>
                 {t('discipline.saveDraft')}
               </Button>
             </div>
@@ -238,7 +266,7 @@ export function DisciplinaryActionPage() {
   if (q.isError) return <QueryError error={q.error} onRetry={() => q.refetch()} />;
   if (!q.data) return <Spinner />;
   const d = q.data;
-  const needsNote = (c: string) => ['reject', 'withdraw', 'appeal'].includes(c);
+  const needsNote = (c: string) => ['reject', 'withdraw', 'appeal', 'reject_appeal', 'court_objection', 'court_uphold', 'court_cancel'].includes(c);
   return (
     <>
       <PageHeader
@@ -281,7 +309,10 @@ export function DisciplinaryActionPage() {
               {d.investigationEndDate && (
                 <>
                   <dt className="text-slate-500">{t('discipline.investigationEndDate')}</dt>
-                  <dd className="tabular">{formatDate(d.investigationEndDate)}</dd>
+                  <dd className="tabular">
+                    {formatDate(d.investigationEndDate)}
+                    {d.investigationMode ? ` · ${t(`discipline.investigationModes.${d.investigationMode}`)}` : ''}
+                  </dd>
                 </>
               )}
               {d.separateViolation && (
@@ -305,10 +336,42 @@ export function DisciplinaryActionPage() {
               {d.appealDecisionDueAt && d.state === 'appealed' && (
                 <>
                   <dt className="text-slate-500">{t('discipline.appealDecisionDue')}</dt>
-                  <dd className="tabular text-amber-700">{formatDate(d.appealDecisionDueAt)}</dd>
+                  <dd className="tabular text-amber-700">
+                    {formatDate(d.appealDecisionDueAt)}
+                    {d.appealEscalatedAt ? ` — ${t('discipline.escalated', { date: formatDate(d.appealEscalatedAt) })}` : ''}
+                  </dd>
+                </>
+              )}
+              {d.courtObjectionDeadline && (d.state === 'objection_window' || d.state === 'appealed') && (
+                <>
+                  <dt className="text-slate-500">{t('discipline.courtObjectionDeadline')}</dt>
+                  <dd className="tabular text-amber-700">{formatDate(d.courtObjectionDeadline)}</dd>
+                </>
+              )}
+              {d.court?.filedAt && (
+                <>
+                  <dt className="text-slate-500">{t('discipline.courtFiled')}</dt>
+                  <dd>
+                    {formatDate(d.court.filedAt)} {d.court.reference ? `— ${d.court.reference}` : ''}
+                  </dd>
+                </>
+              )}
+              {d.court?.rulingOutcome && (
+                <>
+                  <dt className="text-slate-500">{t('discipline.courtRuling')}</dt>
+                  <dd>
+                    {t(`discipline.courtRulings.${d.court.rulingOutcome}`)} {d.court.rulingAt ? `(${formatDate(d.court.rulingAt)})` : ''} {d.court.rulingNote ? `— ${d.court.rulingNote}` : ''}
+                  </dd>
                 </>
               )}
             </dl>
+            {d.investigationRecordText && (
+              <p className="mt-3 rounded-md bg-slate-50 p-2 text-sm">
+                <strong>{t('discipline.investigationRecord')}:</strong> {d.investigationRecordText}
+              </p>
+            )}
+            {d.state === 'objection_window' && <Alert kind="warning">{t('discipline.objectionWindowNote', { date: d.courtObjectionDeadline ? formatDate(d.courtObjectionDeadline) : '' })}</Alert>}
+            {d.state === 'court_objection' && <Alert kind="info">{t('discipline.courtHoldNote')}</Alert>}
             {d.appeal?.note && (
               <Alert kind="info">
                 <strong>{t('discipline.appealNote')}:</strong> {d.appeal.note}
@@ -321,7 +384,7 @@ export function DisciplinaryActionPage() {
             <Card title={t('requests.actions')}>
               <div className="flex flex-wrap gap-2">
                 {d.actions.map((c) => (
-                  <Button key={c} variant={c === 'reject' || c === 'withdraw' ? 'danger' : c === 'approve' || c === 'submit' || c === 'deliver' || c === 'uphold' ? 'primary' : 'secondary'} onClick={() => (needsNote(c) || c === 'uphold' ? setDialog(c) : act.mutate({ transition: c }))} loading={act.isPending}>
+                  <Button key={c} variant={c === 'reject' || c === 'withdraw' || c === 'court_cancel' ? 'danger' : c === 'approve' || c === 'submit' || c === 'deliver' || c === 'uphold' || c === 'reject_appeal' || c === 'court_uphold' ? 'primary' : 'secondary'} onClick={() => (needsNote(c) || c === 'uphold' ? setDialog(c) : act.mutate({ transition: c }))} loading={act.isPending}>
                     {t(`discipline.actions.${c}`)}
                   </Button>
                 ))}

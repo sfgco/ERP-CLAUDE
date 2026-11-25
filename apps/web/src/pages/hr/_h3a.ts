@@ -83,6 +83,8 @@ export const disciplineTone: Record<DisciplinaryState, 'slate' | 'blue' | 'amber
   approved: 'brand',
   delivered: 'amber',
   appealed: 'amber',
+  objection_window: 'amber',
+  court_objection: 'blue',
   upheld: 'red',
   withdrawn: 'slate',
 };
@@ -182,12 +184,18 @@ export interface DisciplinaryRow {
   violationDate: string;
   discoveryDate?: string;
   investigationEndDate?: string;
+  investigationMode?: 'written' | 'oral';
+  investigationRecordText?: string;
+  investigationRecordAttachmentIds?: string[];
   separateViolation?: boolean;
   description: string;
   state: DisciplinaryState;
   deliveredAt?: string;
   appealDeadline?: string;
   appealDecisionDueAt?: string;
+  appealEscalatedAt?: string;
+  courtObjectionDeadline?: string;
+  court?: { filedAt?: string; reference?: string; rulingAt?: string; rulingOutcome?: 'upheld' | 'cancelled'; rulingNote?: string };
   appeal?: { at?: string; note?: string; outcome?: string; decisionNote?: string };
   employeeAck?: { at?: string; note?: string };
   employee?: { fullNameAr: string; employeeNumber: string };

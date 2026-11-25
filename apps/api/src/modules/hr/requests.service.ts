@@ -234,6 +234,17 @@ export async function createRequest(
     relations: ['requester'],
   });
   if (flags.length) await HrRequest.updateOne({ _id: request._id }, { $set: { flags } });
+  // Owner decision 2026-11-25: when the server re-splits an advance, the employee is told the new schedule.
+  if (flags.includes('instalments_rescheduled')) {
+    const n = Number(details.instalments);
+    const per = Number(details.instalmentHalalas);
+    await notify({
+      userIds: [String(user._id)],
+      type: 'request.instalments_rescheduled',
+      bodyAr: `سلفتك ${request.number}: القسط المطلوب يتجاوز الحد المسموح من الأجر، فقُسِّم المبلغ إلى ${n} أقساط بقيمة ${(per / 100).toLocaleString('ar-SA-u-nu-latn', { minimumFractionDigits: 2 })} ريال للقسط (طلبت ${details.requestedInstalments} ${Number(details.requestedInstalments) === 1 ? 'قسطاً' : 'أقساط'}). إن أردت قسطاً أعلى فقدّم الطلب من جديد مع الإقرار الخطي`,
+      link: `/me/requests/${request._id}`,
+    });
+  }
   return (await HrRequest.findById(request._id))!;
 }
 
