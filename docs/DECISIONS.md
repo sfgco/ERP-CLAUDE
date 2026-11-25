@@ -452,5 +452,33 @@ Test counts after the review: API 249 → **252** (hr-h3a.test.ts 5 → 8), web 
 
 Test counts after the second review: API 252 → **257** (hr-h3a.test.ts 8 → 13), web 57 → **58** (investigation-mode label parity).
 
+## 22. HR H3b — legal rules for recruitment and end of service (2026-11-25)
+`docs/HR_H3B_LEGAL.md` was approved on 2026-11-25 after two owner reviews. It is the reference for H3b (recruitment, end of service); every rule in it gets a test. Saudi Labor Law as amended by royal decree M/44 of 1446H (in force 2025-02-19); article numbers verified where the owner asked.
+
+### Owner corrections applied before approval
+- **Retirement (art. 74):** the age comes from the Social Insurance Law. Setting `hr.retirement.rules` (effective-dated by `gosiJoinDate`, like `hr.payroll.gosiRates`), **no default**; the 90-day retirement alert runs only once HR fills it. Never 60/55 in code.
+- **Fixed-term contracts (art. 55, last amended 1436H):** both paths modelled. No renewal clause → the contract ends at expiry; if both parties keep performing it, it becomes indefinite at once (Saudi) or renews for the work-permit period (non-Saudi, art. 37). Renewal clause → renews for the agreed period; after 3 consecutive renewals or 4 years in total, whichever is less, it becomes indefinite (Saudi).
+- **Probation (art. 53 as amended):** excluded days are Eid al-Fitr, Eid al-Adha, National Day, Founding Day and sick leave. **Both parties may always terminate during probation**; the contract cannot restrict that right to one side (the 1446H amendment deleted that exception).
+- **Art. 79** is death/incapacity of the worker (and death of the employer), not notice. «No notice during leave» has no article → it stays as a **non-blocking warning**, setting `hr.offboarding.warnNoticeDuringLeave`, default on (O1 option a).
+- **Art. 82:** block only employer-initiated terminations (notice under art. 75, art. 77, probation termination by the employer) whose end date falls inside approved sick leave before the balance is exhausted. Never block fixed-term expiry, death, mutual agreement, art. 81 or resignation. Art. 80 dismissal: non-blocking warning only.
+- **Art. 75:** monthly wage → 30 days from the employee, 60 from the employer; non-monthly wage → 30 days for either party. Contract field `wagePeriod`, default monthly.
+- **Art. 80:** the nine cases are exhaustive (fixed list, no free text); the objection hearing is recorded before approval; the absence case uses the article's exact text (> 30 intermittent days in the contract year or > 15 consecutive, after a written warning following 20 intermittent / 10 consecutive days), computed from H2 attendance and the H3a written warning.
+- **Art. 84 award** is computed on the last **actual** wage per art. 2: basic + all allowances + commissions (unless excluded per art. 86). Overtime, reimbursements and one-off bonuses are excluded.
+- **Art. 86 commissions:** included by default; excluded only when the contract has `awardExcludesVariableWage` with a mandatory `awardExclusionClauseRef`. Commission amount = **12-month average** of paid commissions (or the service length if shorter), marked «يُؤكَّد من الموارد البشرية» (O3 option a).
+- **Art. 87:** full award when a female employee ends the contract within 6 months of marriage or 3 months of childbirth; dates checked against the leave event date or a manual dated attachment.
+- **Resignation (arts. 74(3 bis), 79 bis):** deemed accepted after 30 days without a response; the employer may postpone up to 60 days for a legitimate reason, in writing; the employee may withdraw within 7 days unless already accepted; end date = earliest of acceptance, 30 days without response, end of postponement. The legal clock starts at submission, not when the request reaches HR.
+- **Art. 155:** server-side block, with a clear message, on dismissal or a dismissal warning (final warning / termination in the H3a ladder) for a female employee during pregnancy or maternity leave, including related sick leave. Pregnancy comes from an approved/ongoing maternity leave or a new sensitive «pregnancy declared» record on the file entered by HR with a medical certificate.
+- **Saudization (arts. 26, 28 + Nitaqat):** no fixed 75 %. Setting `hr.saudization.requiredRatePct` filled by HR from Qiwa, no default; warning below it, never a block.
+
+### The six questions
+1. Commissions in the award: included by default; excluded only with the contract clause reference (above).
+2. Final settlement: a separate «تسوية» payslip sent to Finance immediately on approval, not with the monthly run.
+3. GOSI / Qiwa deadlines: temporary settings `hr.gov.gosiRegisterDays`, `hr.gov.qiwaContractDays`, `hr.gov.gosiExitDays`, `hr.gov.qiwaExitDays`, **blank until HR confirms the values** (O2 option a); the HR dashboard shows an «إعدادات نظامية غير مكتملة» card while any of these or `hr.retirement.rules` is blank.
+4. Saudization threshold: setting from Qiwa (above).
+5. Retirement alert 90 days before: yes, from the retirement setting.
+6. Applicants: manual entry + CSV import in H3b; public application link later.
+
+The end-of-service reasons list in `HR_H3B_LEGAL.md` E1 supersedes the short Q9 list in `HR_PLAN.md` §10.
+
 ## Still open (ask before building)
 Everything in the "Open decisions" section of `CLAUDE.md` that is not settled above, notably: accounting depth / general ledger, ZATCA route and wave, financial authority matrix and monthly cut-off, customer app and company portal, offline support for field staff, discount limits, points and rewards policy, certificate weight criterion, impact factors, organization-type list (SAL §4.1 vs CS §6.8), Finance-stage state labels in other modules (FIN §5 vs PRC §4 and MKT §8).
