@@ -22,8 +22,8 @@ const DEPARTMENTS: { code: string; roles: string[]; endpoints: string[]; permiss
   {
     code: 'hr',
     roles: ['employee', 'hr_manager'],
-    endpoints: ['/hr/employees', '/hr/org-chart', '/hr/requests', '/hr/requests/types', '/hr/attendance/policy', '/hr/attendance/days', '/hr/shifts', '/hr/leave/policies', '/hr/leave/balances', '/hr/payroll', '/hr/performance/cycles', '/hr/performance/kpis', '/hr/discipline/policy', '/hr/discipline', '/hr/training/trainings', '/hr/dashboard/hr', '/hr/dashboard/expiring'],
-    permissions: ['hr.employees', 'hr.requests', 'hr.attendance', 'hr.shifts', 'hr.leave', 'hr.payroll', 'hr.appraisals', 'hr.discipline', 'hr.training'],
+    endpoints: ['/hr/employees', '/hr/org-chart', '/hr/requests', '/hr/requests/types', '/hr/attendance/policy', '/hr/attendance/days', '/hr/shifts', '/hr/leave/policies', '/hr/leave/balances', '/hr/payroll', '/hr/performance/cycles', '/hr/performance/kpis', '/hr/discipline/policy', '/hr/discipline', '/hr/training/trainings', '/hr/recruitment/policy', '/hr/recruitment/requisitions', '/hr/recruitment/offers', '/hr/offboarding/policy', '/hr/offboarding', '/hr/dashboard/hr', '/hr/dashboard/expiring'],
+    permissions: ['hr.employees', 'hr.requests', 'hr.attendance', 'hr.shifts', 'hr.leave', 'hr.payroll', 'hr.appraisals', 'hr.discipline', 'hr.training', 'hr.recruitment', 'hr.offers', 'hr.offboarding'],
   },
   {
     code: 'finance',

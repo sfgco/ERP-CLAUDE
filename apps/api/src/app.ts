@@ -48,6 +48,8 @@ import { attendanceRouter, leaveRouter, shiftsRouter } from './modules/hr/attend
 import { financePayrollRouter, payrollRouter, payslipsRouter } from './modules/hr/payroll.routes';
 import { disciplineRouter, performanceRouter } from './modules/hr/performance.routes';
 import { trainingRouter } from './modules/hr/training.routes';
+import { recruitmentRouter } from './modules/hr/recruitment.routes';
+import { financeSettlementsRouter, itOffboardingRouter, myOffboardingRouter, offboardingRouter } from './modules/hr/offboarding.routes';
 
 /**
  * Express app. Staff realm under /api/v1; the external realm (/api/portal) is added with the
@@ -106,6 +108,12 @@ export function createApp(): Express {
   v1.use('/hr/payroll', payrollRouter);
   v1.use('/hr/payslips', payslipsRouter);
   v1.use('/finance/payroll', financePayrollRouter);
+  // H3b — recruitment and end of service with the thin IT and Finance stages [HR §3.2, §3.10]
+  v1.use('/hr/recruitment', recruitmentRouter);
+  v1.use('/hr/offboarding', offboardingRouter);
+  v1.use('/me/offboarding', myOffboardingRouter);
+  v1.use('/it/offboarding', itOffboardingRouter);
+  v1.use('/finance/settlements', financeSettlementsRouter);
   v1.use('/hr/performance', performanceRouter);
   v1.use('/hr/discipline', disciplineRouter);
   v1.use('/hr/training', trainingRouter);

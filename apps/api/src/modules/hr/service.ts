@@ -631,3 +631,119 @@ export async function employeeHistory(id: string, hidden: Set<string> = new Set(
   // Pay data inside promotion events follows the same field rules as the record (go-live review E1).
   return hidden.size ? items.map((e) => ({ ...e, from: strip(e.from), to: strip(e.to) })) : items;
 }
+
+
+// ==================================================================================================
+// Contracts [HR §3.9] with the H3b legal checks (docs/HR_H3B_LEGAL.md T6–T9; DECISIONS §22)
+// ==================================================================================================
+export interface ContractInput {
+  type: string;
+  startDate: Date;
+  endDate?: Date | null;
+  probationEndDate?: Date | null;
+  probationDays?: number;
+  durationMonths?: number;
+  attachmentId?: string;
+  notes?: string;
+  wagePeriod?: 'monthly' | 'non_monthly';
+  renewalClause?: { enabled: boolean; periodMonths?: number };
+  workDescription?: string;
+  awardExcludesVariableWage?: boolean;
+  awardExclusionClauseRef?: string;
+  nonCompete?: { months: number; scopeAr: string };
+  differentProfession?: boolean;
+}
+/**
+ * One place that writes a contract row for an employee — the contracts route and the hire step of an accepted offer.
+ * T6: a non-Saudi gets a fixed-term contract (open-ended refused; a missing end date defaults to the work-permit expiry).
+ * T7: probation ≤ the policy maximum (art. 53: 180) and its end is computed with the excluded days.
+ * T8: no second probation within `reProbationAfterMonths` of a previous service in the same profession (art. 54).
+ * T9: the chain keeps `originalStartDate` (art. 56) and the renewal count; a renewal is a new row linked to the previous.
+ * E13: excluding commissions from the award needs the clause reference (art. 86).
+ */
+export async function createContract(
+  employee: EmployeeDoc,
+  body: ContractInput,
+  actor: Actor,
+  opts: { session?: ClientSession; renewalOf?: { _id: unknown; renewalCount?: number | null; originalStartDate?: Date | null; startDate: Date } | null; convertedReason?: string } = {},
+) {
+  const { Contract } = await import('./model');
+  const { isSaudi, probationEndDay, probationExcludedDays } = await import('./legal.service');
+  const { getSetting } = await import('../../core/settings/service');
+  const { riyadhDate } = await import('../../core/dates/businessDays');
+  const { addDays } = await import('./attendance.service');
+  const policy = await getSetting('hr.recruitment');
+  if (body.endDate && body.endDate < body.startDate) throw badRequest('تاريخ النهاية قبل البداية');
+  const saudi = isSaudi(employee.nationality);
+  let endDate = body.endDate ?? null;
+  if (!saudi) {
+    if (body.type === 'open_ended') throw badRequest('عقد غير السعودي يكون محدد المدة (المادة 37)', { code: 'non_saudi_open_ended' });
+    if (!endDate && body.type !== 'specific_work') {
+      if (employee.workPermit?.expiryDate) endDate = employee.workPermit.expiryDate; // T6: the permit period
+      else if (body.durationMonths) endDate = new Date(body.startDate.getTime() + body.durationMonths * 30.44 * 86_400_000);
+      else throw badRequest('حدّد مدة العقد أو تاريخ انتهاء رخصة العمل: عقد غير السعودي محدد المدة ومدته مدة رخصة العمل إن خلا منها (المادة 37)', { code: 'non_saudi_duration_required' });
+    }
+  }
+  // A Saudi's fixed term without an end date is accepted as entered (legacy files); art. 37 makes it mandatory for non-Saudis only.
+  if (body.type === 'fixed_term' && !endDate && body.durationMonths) endDate = new Date(body.startDate.getTime() + body.durationMonths * 30.44 * 86_400_000);
+  if (body.type === 'specific_work' && !body.workDescription) throw badRequest('عقد العمل المعيّن يصف العمل الذي ينتهي العقد بإنجازه (المادة 57)', { code: 'work_description_required' });
+  if (body.awardExcludesVariableWage && !body.awardExclusionClauseRef?.trim()) throw badRequest('استثناء العمولات من أجر المكافأة يكون بنص صريح في العقد — أدخل مرجع البند (المادة 86)', { code: 'exclusion_clause_required' });
+  const probationDays = body.probationDays ?? 0;
+  if (probationDays > policy.maxProbationDays) throw badRequest(`فترة التجربة لا تتجاوز ${policy.maxProbationDays} يوماً (المادة 53)`, { code: 'probation_over_max' });
+  // T8 (art. 54): a previous service with the cooperative less than N months ago in the same profession → no probation.
+  if (probationDays > 0 && !opts.renewalOf) {
+    const previous = await Contract.findOne({ employeeId: employee._id, status: { $in: ['expired', 'terminated'] } }).sort({ endDate: -1 }).lean();
+    const previousEnd = previous?.endDate ?? employee.endDate ?? null;
+    if (previous && previousEnd) {
+      const monthsSince = (body.startDate.getTime() - previousEnd.getTime()) / (30.44 * 86_400_000);
+      if (monthsSince < policy.reProbationAfterMonths && !body.differentProfession)
+        throw badRequest(`لا يُوضع العامل تحت التجربة مرة أخرى عند نفس صاحب العمل إلا لمهنة أخرى أو بعد مضي ${policy.reProbationAfterMonths} أشهر على انتهاء العلاقة السابقة (المادة 54)`, { code: 'reprobation_refused' });
+    }
+  }
+  // T7: the probation end with the excluded days (the four official holidays + approved sick leave).
+  const startDay = riyadhDate(body.startDate);
+  let probationEndDate = body.probationEndDate ?? null;
+  let probationBaseEndDate: Date | null = null;
+  if (probationDays > 0) {
+    probationBaseEndDate = new Date(`${addDays(startDay, probationDays - 1)}T23:59:59.999+03:00`);
+    const excluded = await probationExcludedDays(employee._id, startDay, addDays(startDay, probationDays + 60));
+    const endDay = probationEndDay(startDay, probationDays, excluded);
+    probationEndDate = endDay ? new Date(`${endDay}T23:59:59.999+03:00`) : null;
+  }
+  const previous = opts.renewalOf ?? (await Contract.findOne({ employeeId: employee._id }).sort({ version: -1 }));
+  const [c] = await Contract.create(
+    [
+      {
+        type: body.type,
+        startDate: body.startDate,
+        endDate,
+        probationEndDate,
+        probationDays,
+        probationBaseEndDate,
+        durationMonths: body.durationMonths,
+        attachmentId: body.attachmentId,
+        notes: body.notes,
+        wagePeriod: body.wagePeriod ?? 'monthly',
+        renewalClause: body.renewalClause ?? { enabled: false },
+        workDescription: body.workDescription,
+        awardExcludesVariableWage: !!body.awardExcludesVariableWage,
+        awardExclusionClauseRef: body.awardExclusionClauseRef,
+        nonCompete: body.nonCompete,
+        employeeId: employee._id,
+        number: await nextNumber('contract', opts.session),
+        version: ((previous as { version?: number } | null)?.version ?? 0) + 1,
+        previousId: previous?._id,
+        renewalCount: opts.renewalOf ? (opts.renewalOf.renewalCount ?? 0) + 1 : 0,
+        originalStartDate: opts.renewalOf ? opts.renewalOf.originalStartDate ?? opts.renewalOf.startDate : body.startDate,
+        convertedReason: opts.convertedReason,
+        createdBy: actor.userId,
+      },
+    ],
+    { session: opts.session },
+  );
+  if (previous && ['active', 'renewing'].includes((previous as { status?: string }).status ?? '')) {
+    await Contract.updateOne({ _id: previous._id }, { $set: { status: 'expired', statusReason: opts.convertedReason ? 'converted' : 'renewed' } }, { session: opts.session });
+  }
+  await recordAudit(actor, { action: 'create', resource: 'hr.contracts', resourceId: String(c._id), after: { number: c.number, type: c.type, startDate: c.startDate, endDate: c.endDate, probationEndDate: c.probationEndDate } }, opts.session);
+  return c;
+}

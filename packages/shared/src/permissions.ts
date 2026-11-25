@@ -87,6 +87,8 @@ export const DEPARTMENT_MANAGER_IMPLIED_ROLES: Record<string, string> = {
  */
 export const DEPARTMENT_MEMBER_IMPLIED_ROLES: Record<string, string> = {
   sales: 'sales_rep',
+  // H3b [HR §3.10.6]: anyone in the IT department works the thin offboarding queue (accounts, assets) — IT §7.3.
+  it: 'it_staff',
 };
 
 export const ALL_ACTIONS: Action[] = [...ACTIONS];
@@ -140,7 +142,11 @@ export function grantableRolesFor(actorRoles: readonly string[]): Set<string> | 
  * Default-deny: a scope grant alone never reveals them.
  */
 export const SENSITIVE_FIELDS_BY_RESOURCE: Record<string, readonly string[]> = {
-  'hr.employees': ['identity.number', 'religion', 'birthDate', 'basicSalaryHalalas', 'allowances', 'bank'],
+  'hr.employees': ['identity.number', 'religion', 'birthDate', 'basicSalaryHalalas', 'allowances', 'bank', 'pregnancy'],
+  // H3b (HR_PLAN §6): salary data on requisitions and offers, settlement amounts, applicant identity numbers.
+  'hr.recruitment': ['salaryRange', 'identityNumber'],
+  'hr.offers': ['basicSalaryHalalas', 'allowances'],
+  'hr.offboarding': ['settlement'],
 };
 
 export const TEAM_LEAD_GRANTS: PermissionGrant[] = [

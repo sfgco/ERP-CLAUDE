@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { useTranslation } from 'react-i18next';
 import { Paperclip } from 'lucide-react';
+import { Link } from 'react-router';
 import { HR_REQUEST_TYPES, type HrRequestType } from '@eayni/shared';
 import { del, get, post, put } from '@/lib/api';
 import { errorMessage, fieldErrorsFrom } from '@/lib/errors';
@@ -143,6 +144,12 @@ export function NewRequestDialog({
             ))}
           </Select>
         </Field>
+        <p className="text-xs text-slate-500">
+          <Link to="/me/offboarding" className="text-brand-700 underline" onClick={onClose}>
+            {t('offboarding.me.resign')}
+          </Link>{' '}
+          — {t('offboarding.me.hint')}
+        </p>
         {info && (
           <p className="text-xs text-slate-500">
             {info.route.finalApprover === 'manager'

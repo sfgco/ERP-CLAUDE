@@ -85,6 +85,17 @@ const employeeSchema = new Schema(
     medicalInsurance: { type: Boolean, default: false },
     /** First registration with GOSI: picks the contribution-rate group in payroll (DECISIONS §21 Q8) [HR §3.6.3]. */
     gosiJoinDate: { type: Date },
+    /** T4 (arts. 33, 38): work permit of a non-Saudi (H3b). */
+    workPermit: { number: String, professionAr: String, expiryDate: Date },
+    /** T14: cooperative health insurance policy (H3b). */
+    medicalInsurancePolicy: { number: String, expiryDate: Date },
+    /**
+     * E26 (art. 155): a declared pregnancy — sensitive (default deny, audited), entered by HR with the medical
+     * certificate; `endedAt` closes the protection after the maternity leave and any related sick leave.
+     */
+    pregnancy: { declaredAt: Date, expectedDeliveryDate: Date, certificateAttachmentId: Schema.Types.ObjectId, endedAt: Date, note: String, recordedBy: Schema.Types.ObjectId },
+    /** E1: the retirement alert was sent (year of the alert). */
+    retirementAlertedAt: { type: Date },
     legacyId: { type: String }, // import-friendly (DECISIONS §3)
     lastBirthdayYear: { type: Number },
     deletedAt: { type: Date },
@@ -156,7 +167,25 @@ const contractSchema = new Schema(
     startDate: { type: Date, required: true },
     endDate: { type: Date, index: true },
     probationEndDate: { type: Date },
+    /** T7 (art. 53): the probation as written in the contract (≤ 180 days); the end date is recomputed with the excluded days. */
+    probationDays: { type: Number },
+    /** The end date before adding the excluded days (Eids, National Day, Founding Day, sick leave). */
+    probationBaseEndDate: { type: Date },
     durationMonths: { type: Number },
+    // H3b legal fields (docs/HR_H3B_LEGAL.md T9, T10, E2, E9, E13)
+    wagePeriod: { type: String, default: 'monthly' },
+    renewalClause: { enabled: { type: Boolean, default: false }, periodMonths: Number },
+    renewalCount: { type: Number, default: 0 },
+    /** The start of the first contract in the chain (art. 56: an extension counts as one service for the award). */
+    originalStartDate: { type: Date },
+    workDescription: { type: String },
+    awardExcludesVariableWage: { type: Boolean, default: false },
+    awardExclusionClauseRef: { type: String },
+    nonCompete: { months: Number, scopeAr: String },
+    /** T9 path (a): the fixed term lapsed with no renewal clause and the employee kept working — HR must decide. */
+    continuationDecision: { neededSince: Date, decidedAt: Date, decidedBy: Schema.Types.ObjectId, outcome: String },
+    /** Set on the row that converted to an indefinite contract (art. 55) — the reason is kept for the file. */
+    convertedReason: { type: String },
     attachmentId: { type: Schema.Types.ObjectId },
     addenda: {
       type: [

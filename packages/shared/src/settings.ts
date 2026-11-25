@@ -15,6 +15,15 @@ import {
 import { DEFAULT_GOSI_RATES, DEFAULT_PAYROLL_POLICY, gosiRatesSchema, payrollPolicySchema } from './schemas/payroll';
 import { DEFAULT_TRAINING_POLICY, trainingPolicySchema } from './schemas/training';
 import {
+  DEFAULT_GOV_DEADLINES,
+  DEFAULT_RECRUITMENT_POLICY,
+  DEFAULT_SAUDIZATION_SETTING,
+  govDeadlinesSchema,
+  recruitmentPolicySchema,
+  saudizationSettingSchema,
+} from './schemas/recruitment';
+import { DEFAULT_EOS_POLICY, DEFAULT_EXIT_INTERVIEW_TEMPLATE, eosPolicySchema, exitInterviewTemplateSchema, retirementRulesSchema } from './schemas/offboarding';
+import {
   attendanceRulesSchema,
   correctionPolicySchema,
   DEFAULT_LEAVE_POLICIES,
@@ -512,6 +521,67 @@ export const SETTING_DEFINITIONS = {
     group: 'hr',
     schema: trainingPolicySchema,
     default: DEFAULT_TRAINING_POLICY,
+  }),
+  // ---- Recruitment and end of service [HR §3.2, §3.10; HR_PLAN §8; DECISIONS §22; docs/HR_H3B_LEGAL.md]
+  'hr.recruitment': def({
+    key: 'hr.recruitment',
+    labelAr: 'التوظيف: من يرفع طلب الاحتياج ومن يعتمده، قنوات الإعلان، معايير المقابلات، من يعتمد العرض، مدة حفظ السير الذاتية، أسباب الرفض المهنية، الحد الأدنى لسن العمل، حد التجربة',
+    descriptionAr:
+      'Q10 (DECISIONS §21): مديرو الأقسام يرفعون ومدير الموارد البشرية يعتمد؛ القنوات داخلي / جدارات / لينكدإن / أخرى؛ معايير 1–5؛ السير الذاتية للمرفوضين تُحذف بعد 12 شهراً (نظام حماية البيانات). T1 (المادة 3): أسباب الرفض مهنية فقط. T2 (المادتان 162–163): لا توظيف دون 15 وتعليم دون 18. T7 (المادة 53): التجربة ≤ 180 يوماً. T8 (المادة 54): لا تجربة ثانية قبل 6 أشهر إلا لمهنة أخرى',
+    group: 'hr',
+    schema: recruitmentPolicySchema,
+    default: DEFAULT_RECRUITMENT_POLICY,
+    provisional: true,
+  }),
+  'hr.saudization': def({
+    key: 'hr.saudization',
+    labelAr: 'نسبة التوطين المطلوبة (من قوى — نطاقات) ونسبة ذوي الإعاقة',
+    descriptionAr: 'T3 (المادتان 26 و28، DECISIONS §22 Q4): لا نسبة ثابتة؛ تُدخل الموارد البشرية النسبة المطلوبة من قوى مع النطاق وتاريخ القراءة؛ فارغة = لا تحذير حتى تُملأ. 4 % لذوي الإعاقة لمن لديه 25 عاملاً فأكثر',
+    group: 'hr',
+    schema: saudizationSettingSchema,
+    default: DEFAULT_SAUDIZATION_SETTING,
+  }),
+  'hr.gov': def({
+    key: 'hr.gov',
+    labelAr: 'مهل التسجيل والإشعار في قوى والتأمينات الاجتماعية (أيام) — فارغة حتى تأكيد الموارد البشرية',
+    descriptionAr: 'T13 / E22 (DECISIONS §22 Q3): توثيق العقد في قوى، التسجيل في التأمينات عند المباشرة، إشعار التأمينات وتحديث قوى عند انتهاء الخدمة؛ التنبيه لا يعمل حتى تُدخل القيم. إدخال يدوي حتى التكامل (المرحلة 7)',
+    group: 'hr',
+    schema: govDeadlinesSchema,
+    default: DEFAULT_GOV_DEADLINES,
+  }),
+  'hr.retirement.rules': def({
+    key: 'hr.retirement.rules',
+    labelAr: 'سن التقاعد وفق نظام التأمينات الاجتماعية — صفوف بتاريخ الاشتراك والجنس (فارغ حتى تملؤه الموارد البشرية)',
+    descriptionAr: 'E1 (المادة 74 بتعديل 1446هـ، DECISIONS §22): لا 60/55 في الكود؛ كل صف: من تاريخ الاشتراك في التأمينات (أو فارغ للجميع)، الجنس (أو فارغ)، السن بالسنوات. التنبيه قبل 90 يوماً (إعداد hr.eos) لا يعمل حتى يُملأ',
+    group: 'hr',
+    schema: retirementRulesSchema,
+    default: [] as z.infer<typeof retirementRulesSchema>,
+  }),
+  'hr.eos': def({
+    key: 'hr.eos',
+    labelAr: 'نهاية الخدمة: من يعتمد الطلب والمخالصة، أيام الاستقالة (30 / 60 / 7)، مهل الإشعار (المادة 75)، مهل السداد (المادة 88)، تنبيه التقاعد، متوسط العمولات، أنواع بدلات العمولة، تذكرة العودة، مدة حفظ الملف',
+    descriptionAr:
+      'DECISIONS §22: أرقام نظام العمل ثابتة بمادتها ولا تقبل أقل منها؛ متوسط العمولات 12 شهراً (أو مدة الخدمة إن أقل) يُؤكَّد من الموارد البشرية (O3)؛ الملف يُحفظ 10 سنوات (Q14)',
+    group: 'hr',
+    schema: eosPolicySchema,
+    default: DEFAULT_EOS_POLICY,
+    provisional: true,
+  }),
+  'hr.exitInterview.template': def({
+    key: 'hr.exitInterview.template',
+    labelAr: 'أسئلة مقابلة الخروج (نموذج مُرقَّم)',
+    descriptionAr: 'Q13 (DECISIONS §21): الإصدار الأول قابل للتعديل؛ كل مقابلة تحفظ رقم إصدار النموذج الذي أُجريت به',
+    group: 'hr',
+    schema: exitInterviewTemplateSchema,
+    default: DEFAULT_EXIT_INTERVIEW_TEMPLATE,
+  }),
+  'hr.offboarding.warnNoticeDuringLeave': def({
+    key: 'hr.offboarding.warnNoticeDuringLeave',
+    labelAr: 'تحذير (غير حاجب) عندما يقع تاريخ الإشعار داخل إجازة معتمدة',
+    descriptionAr: 'E4 / O1 (DECISIONS §22): سياسة داخلية لا سند لها في نظام العمل (المادة 79 عن الوفاة)؛ مفعَّلة افتراضياً بقرار المالك',
+    group: 'hr',
+    schema: z.boolean(),
+    default: true,
   }),
   'hr.probationAlertDaysBefore': def({
     key: 'hr.probationAlertDaysBefore',

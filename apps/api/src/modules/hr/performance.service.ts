@@ -36,6 +36,9 @@ import {
   type AppraisalDoc,
   type DisciplinaryActionDoc,
 } from './performance.model';
+import { assertNotPregnancyProtected } from './offboarding.service';
+/** E26: the ladder steps that are, or threaten, a dismissal (art. 155). */
+const isDismissalStep = (step: { code: string; payrollEffect: string }) => step.payrollEffect === 'termination' || step.code === 'final_warning';
 
 const HR_ROLES = ['hr_officer', 'hr_manager'];
 const isHr = (user: UserDoc) => user.roles.some((r) => HR_ROLES.includes(r.role));
@@ -422,6 +425,8 @@ export async function createDisciplinary(input: CreateDisciplinaryInput, user: U
   const roles = user.roles.map((r) => r.role);
   const mayIssue = policy.issuers.some((i) => (i === 'direct_manager' ? managerUserId === String(user._id) : roles.includes(i)));
   if (!mayIssue) throw forbidden('إصدار الإجراء من صلاحية المدير المباشر أو الموارد البشرية');
+  // E26 (art. 155, DECISIONS §22): no dismissal and no dismissal warning for a pregnant employee or one on maternity leave.
+  if (isDismissalStep(step)) await assertNotPregnancyProtected(employee, riyadhDate(new Date()));
   const today = riyadhDate(new Date());
   if (input.violationDate > today) throw badRequest('تاريخ المخالفة في المستقبل');
   if (input.discoveryDate > today) throw badRequest('تاريخ اكتشاف المخالفة في المستقبل');
@@ -503,6 +508,11 @@ export async function transitionDisciplinary(d: DisciplinaryActionDoc, code: str
   // Art. 71: the penalty is signed (approved) within `investigationSignDays` of the investigation's end.
   if (code === 'approve' && d.investigationEndDate && d.investigationEndDate < addDays(today, -policy.investigationSignDays))
     throw badRequest(`لا يُوقَّع الجزاء بعد مرور ${policy.investigationSignDays} يوماً من انتهاء التحقيق (المادة 71)`, { code: 'investigation_expired' });
+  // E26 (art. 155): re-checked when the action is approved or delivered — the pregnancy may have been declared since the draft.
+  if ((code === 'approve' || code === 'deliver') && (d.payrollEffect === 'termination' || d.kind === 'final_warning')) {
+    const subjectEmployee = await Employee.findById(d.employeeId);
+    if (subjectEmployee) await assertNotPregnancyProtected(subjectEmployee, today);
+  }
   const holidays = code === 'deliver' || code === 'reject_appeal' ? await loadHolidaySet() : new Set<string>();
   const fromState = d.state;
   const employeeForTask = code === 'appeal' ? await Employee.findById(d.employeeId).select('userId fullNameAr departmentId').lean() : null;

@@ -28,6 +28,19 @@ import {
   HR_REQUEST_TYPE_AR,
   IDENTITY_TYPE_AR,
   LEAVE_TYPE_AR,
+  REQUISITION_STATE_AR,
+  APPLICANT_STAGE_AR,
+  INTERVIEW_STATE_AR,
+  INTERVIEW_MODE_AR,
+  INTERVIEW_RECOMMENDATION_AR,
+  OFFER_STATE_AR,
+  WAGE_PERIOD_AR,
+  OFFBOARDING_STATE_AR,
+  SETTLEMENT_STATE_AR,
+  EOS_REASON_AR,
+  SETTLEMENT_LINE_AR,
+  OFFBOARDING_STEP_AR,
+  HOLIDAY_KIND_AR,
 } from '@eayni/shared';
 import ar from '../locales/ar/common.json';
 
@@ -67,6 +80,20 @@ const pairs: [string, Record<string, string>, Record<string, string>][] = [
   ['training.needStates', TRAINING_NEED_STATE_AR, ar.training.needStates],
   ['training.kinds', TRAINING_KIND_AR, ar.training.kinds],
   ['training.participantStatuses', PARTICIPANT_STATUS_AR, ar.training.participantStatuses],
+  // H3b [HR §3.2, §3.10; docs/HR_H3B_LEGAL.md]
+  ['recruitment.states', REQUISITION_STATE_AR, ar.recruitment.states],
+  ['recruitment.stages', APPLICANT_STAGE_AR, ar.recruitment.stages],
+  ['recruitment.interviewStates', INTERVIEW_STATE_AR, ar.recruitment.interviewStates],
+  ['recruitment.modes', INTERVIEW_MODE_AR, ar.recruitment.modes],
+  ['recruitment.recommendations', INTERVIEW_RECOMMENDATION_AR, ar.recruitment.recommendations],
+  ['recruitment.offerStates', OFFER_STATE_AR, ar.recruitment.offerStates],
+  ['recruitment.wagePeriods', WAGE_PERIOD_AR, ar.recruitment.wagePeriods],
+  ['offboarding.states', OFFBOARDING_STATE_AR, ar.offboarding.states],
+  ['offboarding.settlementStates', SETTLEMENT_STATE_AR, ar.offboarding.settlementStates],
+  ['offboarding.reasons', EOS_REASON_AR, ar.offboarding.reasons],
+  ['offboarding.lines', SETTLEMENT_LINE_AR, ar.offboarding.lines],
+  ['offboarding.step', OFFBOARDING_STEP_AR, ar.offboarding.step],
+  ['holidays.kinds', HOLIDAY_KIND_AR, ar.holidays.kinds],
 ];
 
 describe('HR enum labels: shared package and Arabic locale agree', () => {

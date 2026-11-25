@@ -46,6 +46,7 @@ import {
   Award,
   GraduationCap,
   Gavel,
+  UserPlus,
 } from 'lucide-react';
 import { useAuth } from '@/lib/auth';
 import { usePrefs } from '@/lib/preferences';
@@ -180,6 +181,7 @@ export function AppShell() {
     { to: '/me/payslips', label: t('nav.myPayslips'), icon: Wallet, show: can('hr.payslips', 'view') },
     { to: '/me/performance', label: t('nav.myPerformance'), icon: Award, show: can('hr.goals', 'view') },
     { to: '/me/training', label: t('nav.myTraining'), icon: GraduationCap, show: can('hr.training', 'view') },
+    { to: '/me/offboarding', label: t('nav.myOffboarding'), icon: LogOut, show: can('hr.offboarding', 'create') },
     { to: '/manager/appraisals', label: t('nav.teamAppraisals'), icon: Award, show: !!team.data?.items.length },
     { to: '/me/tickets', label: t('nav.myTickets'), icon: Ticket, show: can('tickets', 'view') },
     { to: '/manager/requests', label: t('nav.teamRequests'), icon: Inbox, show: !!inbox.data?.total },
@@ -295,6 +297,21 @@ export function AppShell() {
       icon: Gavel,
       show: can('hr.discipline', 'create') || (can('hr.discipline', 'view') && (user?.permissions.find((p) => p.resource === 'hr.discipline')?.scope ?? 'own') === 'all'),
     },
+    // H3b [HR §3.2, §3.10]: recruitment for HR and department managers; end of service for HR; the IT and Finance thin stages.
+    {
+      to: '/hr/recruitment',
+      label: t('nav.recruitment'),
+      icon: UserPlus,
+      show: can('hr.recruitment', 'create') || (can('hr.recruitment', 'view') && (user?.permissions.find((p) => p.resource === 'hr.recruitment')?.scope ?? 'own') !== 'own'),
+    },
+    {
+      to: '/hr/offboarding',
+      label: t('nav.offboarding'),
+      icon: LogOut,
+      show: can('hr.offboarding', 'view') && (user?.permissions.find((p) => p.resource === 'hr.offboarding')?.scope ?? 'own') !== 'own',
+    },
+    { to: '/it/offboarding', label: t('nav.itOffboarding'), icon: LogOut, show: can('it.offboarding', 'view') },
+    { to: '/finance/settlements', label: t('nav.financeSettlements'), icon: Wallet, show: can('finance.settlements', 'view') },
     {
       to: '/hr/training',
       label: t('nav.training'),

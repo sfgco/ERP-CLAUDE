@@ -36,6 +36,11 @@ import { runPayrollCutoffReminder } from './payroll.service';
 import { registerPerformanceHandlers, runAppraisalJobs, runPerformanceFollowUps } from './performance.service';
 import { runTrainingReminders } from './training.service';
 import { Training } from './training.model';
+import { Applicant } from './recruitment.model';
+import { Offboarding } from './offboarding.model';
+import { runFixedTermExpiry, runRecruitmentJobs } from './recruitment.service';
+import { runOffboardingJobs } from './offboarding.service';
+import { registerH3bExports } from './h3b.exports';
 import { ImprovementPlan } from './performance.model';
 import type { RoleDefinition } from '@eayni/shared';
 import {
@@ -255,6 +260,31 @@ export function registerHrModule(): void {
   registerJob('hr.training.reminders', (now) => runTrainingReminders(now));
   registerPerformanceHandlers();
   registerH3aExports();
+  // H3b [HR §3.2, §3.10; docs/HR_H3B_LEGAL.md]: offer expiry / onboarding / government deadlines / CV retention; the art. 79 bis clock,
+  // settlement deadlines, auto-complete, retirement alerts; fixed-term expiry paths (art. 55).
+  registerJob('hr.recruitment.jobs', (now) => runRecruitmentJobs(now));
+  registerJob('hr.offboarding.jobs', (now) => runOffboardingJobs(now));
+  registerJob('hr.contracts.fixedterm', (now) => runFixedTermExpiry(now));
+  registerH3bExports();
+  registerTaskSourceResolver('offboarding', async (idOrNumber) => {
+    const o = await Offboarding.findOne({ deletedAt: null, $or: [...(/^[0-9a-f]{24}$/i.test(idOrNumber) ? [{ _id: idOrNumber }] : []), { number: idOrNumber }] }).select('number').lean();
+    return o ? { id: String(o._id), label: o.number } : null;
+  });
+  registerTaskSourceResolver('applicant', async (id) => {
+    const a = /^[0-9a-f]{24}$/i.test(id) ? await Applicant.findById(id).select('fullNameAr').lean() : null;
+    return a ? { id: String(a._id), label: a.fullNameAr } : null;
+  });
+  // Files hanging on recruitment / offboarding records: HR (and the leaving employee for their own record).
+  registerRecordAccess('applicant', async (req) => !!(await permissionOn(req, 'hr.recruitment')));
+  registerRecordAccess('offer', async (req) => !!(await permissionOn(req, 'hr.offers')));
+  registerRecordAccess('offboarding', async (req, id) => {
+    const eff = await permissionOn(req, 'hr.offboarding');
+    if (!eff) return false;
+    if (eff.scope === 'all') return true;
+    const me = await Employee.findOne({ userId: req.auth.user._id, deletedAt: null }).select('_id').lean();
+    return !!(await Offboarding.exists({ _id: id, $or: [{ requestedBy: req.auth.user._id }, ...(me ? [{ employeeId: me._id }] : [])] }));
+  });
+  for (const t of ['applicant', 'offer', 'offboarding']) registerSensitiveOwnerType(t);
   registerTaskSourceResolver('training', async (idOrNumber) => {
     const t = await Training.findOne({ deletedAt: null, $or: [...(/^[0-9a-f]{24}$/i.test(idOrNumber) ? [{ _id: idOrNumber }] : []), { number: idOrNumber }] }).select('number title').lean();
     return t ? { id: String(t._id), label: `${t.number} ${t.title}` } : null;
@@ -488,11 +518,16 @@ export function HR_FINANCE_GRANTS(roleCode: string): RoleDefinition['grants'] {
     return [
       { resource: 'finance.payroll', actions: ['view', 'approve', 'edit'], scope: 'all' },
       { resource: 'hr.payslips', actions: ['view'], scope: 'all' },
+      // H3b E15 (art. 88, DECISIONS §22 Q2): the final settlement reaches Finance as its own payslip.
+      { resource: 'finance.settlements', actions: ['view', 'edit'], scope: 'all' },
+      { resource: 'hr.offboarding', actions: ['view'], scope: 'all' },
     ];
   if (roleCode === 'finance_staff')
     return [
       { resource: 'finance.payroll', actions: ['view', 'edit'], scope: 'all' },
       { resource: 'hr.payslips', actions: ['view'], scope: 'all' },
+      { resource: 'finance.settlements', actions: ['view', 'edit'], scope: 'all' },
+      { resource: 'hr.offboarding', actions: ['view'], scope: 'all' },
     ];
   return [];
 }

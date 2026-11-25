@@ -73,6 +73,7 @@ const typeColor: Record<EventType, string> = {
   meeting: 'bg-sky-500',
   visit: 'bg-amber-500',
   training: 'bg-violet-500',
+  interview: 'bg-teal-500', // H3b recruitment interviews [HR §3.2.6]
   secondment: 'bg-fuchsia-500',
   follow_up: 'bg-emerald-500',
   event: 'bg-rose-500',

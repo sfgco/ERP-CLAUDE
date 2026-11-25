@@ -33,11 +33,12 @@ import { riyadhToday } from '@/lib/dates';
 import { typeLabel, useReportTypes, useReports } from '../reports/_data';
 import { EmployeeAttendanceTab, EmployeeLeaveTab } from './EmployeeAttendanceTabs';
 import { EmployeeDisciplineTab, EmployeePayrollTab, EmployeePerformanceTab } from './EmployeeH3aTabs';
+import { EmployeeOffboardingTab } from './EmployeeH3bTabs';
 
 const CUSTODY_CONDITIONS = ['good', 'damaged', 'lost'] as const;
 import { statusTone } from './EmployeesPage';
 
-type Tab = 'data' | 'job' | 'contracts' | 'documents' | 'custody' | 'reports' | 'attendance' | 'leave' | 'payroll' | 'performance' | 'discipline';
+type Tab = 'data' | 'job' | 'contracts' | 'documents' | 'custody' | 'reports' | 'attendance' | 'leave' | 'payroll' | 'performance' | 'discipline' | 'offboarding';
 
 /** Employee file [HR §3.3]: data, job + history [HR §3.1], contracts [HR §3.9], documents, custody. */
 export function EmployeePage() {
@@ -69,6 +70,8 @@ export function EmployeePage() {
     ...(can('hr.payslips', 'view') && user?.permissions.find((p) => p.resource === 'hr.payslips')?.scope === 'all' ? [{ key: 'payroll' as Tab, label: t('hr.tabs.payroll') }] : []),
     ...(can('hr.appraisals', 'view') ? [{ key: 'performance' as Tab, label: t('hr.tabs.performance') }] : []),
     ...(can('hr.discipline', 'view') ? [{ key: 'discipline' as Tab, label: t('hr.tabs.discipline') }] : []),
+    // H3b [HR §3.10, §9.3]: the endings of this employee (HR and department managers; the art. 155 record for HR).
+    ...(can('hr.offboarding', 'view') && (user?.permissions.find((p) => p.resource === 'hr.offboarding')?.scope ?? 'own') !== 'own' ? [{ key: 'offboarding' as Tab, label: t('hr.tabs.offboarding') }] : []),
   ];
   return (
     <>
@@ -113,6 +116,7 @@ export function EmployeePage() {
       {tab === 'payroll' && <EmployeePayrollTab employeeId={e._id} />}
       {tab === 'performance' && <EmployeePerformanceTab employeeId={e._id} fullNameAr={e.fullNameAr} employeeNumber={e.employeeNumber} />}
       {tab === 'discipline' && <EmployeeDisciplineTab employeeId={e._id} />}
+      {tab === 'offboarding' && <EmployeeOffboardingTab employeeId={e._id} gender={e.gender} pregnancy={(e as { pregnancy?: { declaredAt?: string; expectedDeliveryDate?: string; endedAt?: string | null; note?: string } | null }).pregnancy ?? null} />}
     </>
   );
 }

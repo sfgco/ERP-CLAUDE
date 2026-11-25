@@ -83,6 +83,14 @@ import { DisciplinaryActionPage, DisciplinePage } from './pages/hr/DisciplinePag
 import { TrainingPage } from './pages/hr/TrainingPage';
 import { TrainingCoursePage } from './pages/hr/TrainingCoursePage';
 import { MyTrainingPage } from './pages/me/TrainingPage';
+import { RecruitmentPage } from './pages/hr/RecruitmentPage';
+import { RequisitionPage } from './pages/hr/RequisitionPage';
+import { OfferPage } from './pages/hr/OfferPage';
+import { OffboardingPage } from './pages/hr/OffboardingPage';
+import { OffboardingDetailPage } from './pages/hr/OffboardingDetailPage';
+import { MyOffboardingPage } from './pages/me/OffboardingPage';
+import { ItOffboardingPage } from './pages/it/OffboardingPage';
+import { SettlementsPage } from './pages/finance/SettlementsPage';
 
 export const router = createBrowserRouter([
   {
@@ -121,6 +129,7 @@ export const router = createBrowserRouter([
               { path: '/me/payslips', element: <PayslipsPage /> },
               { path: '/me/performance', element: <MyPerformancePage /> },
               { path: '/me/training', element: <MyTrainingPage /> },
+              { path: '/me/offboarding', element: <MyOffboardingPage /> },
               { path: '/manager/appraisals', element: <TeamAppraisalsPage /> },
               // Appraisal, plan and action details: the API decides per record (employee / manager / HR).
               { path: '/hr/performance/appraisals/:id', element: <AppraisalPage /> },
@@ -227,6 +236,33 @@ export const router = createBrowserRouter([
               {
                 element: <RequirePermission resource="hr.training" action="view" />,
                 children: [{ path: '/hr/training', element: <TrainingPage /> }],
+              },
+              // H3b [HR §3.2, §3.10]: recruitment (department managers raise, HR runs), end of service, the thin IT and Finance stages.
+              {
+                element: <RequirePermission resource="hr.recruitment" action="view" />,
+                children: [
+                  { path: '/hr/recruitment', element: <RecruitmentPage /> },
+                  { path: '/hr/recruitment/requisitions/:id', element: <RequisitionPage /> },
+                ],
+              },
+              {
+                element: <RequirePermission resource="hr.offers" action="view" />,
+                children: [{ path: '/hr/recruitment/offers/:id', element: <OfferPage /> }],
+              },
+              {
+                element: <RequirePermission resource="hr.offboarding" action="view" />,
+                children: [
+                  { path: '/hr/offboarding', element: <OffboardingPage /> },
+                  { path: '/hr/offboarding/:id', element: <OffboardingDetailPage /> },
+                ],
+              },
+              {
+                element: <RequirePermission resource="it.offboarding" action="view" />,
+                children: [{ path: '/it/offboarding', element: <ItOffboardingPage /> }],
+              },
+              {
+                element: <RequirePermission resource="finance.settlements" action="view" />,
+                children: [{ path: '/finance/settlements', element: <SettlementsPage /> }],
               },
               {
                 element: <RequirePermission resource="crm.customers" action="view" />,

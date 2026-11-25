@@ -27,16 +27,16 @@ const DEPARTMENTS: { code: string; routes: string[]; nav: string[]; apiMounts: s
   },
   {
     code: 'hr',
-    routes: ['/hr', '/hr/employees', '/hr/dashboard', '/hr/org-chart', '/hr/requests', '/hr/attendance', '/hr/shifts', '/hr/leave', '/hr/payroll', '/hr/performance', '/hr/discipline', '/hr/training', '/hr/export'],
-    nav: ['/hr', '/hr/employees', '/hr/dashboard', '/hr/requests', '/hr/attendance', '/hr/shifts', '/hr/leave', '/hr/payroll', '/hr/performance', '/hr/discipline', '/hr/training'],
-    apiMounts: ['/hr', '/hr/requests', '/hr/attendance', '/hr/shifts', '/hr/leave', '/hr/payroll', '/hr/performance', '/hr/discipline', '/hr/training', '/hr/dashboard'],
+    routes: ['/hr', '/hr/employees', '/hr/dashboard', '/hr/org-chart', '/hr/requests', '/hr/attendance', '/hr/shifts', '/hr/leave', '/hr/payroll', '/hr/performance', '/hr/discipline', '/hr/training', '/hr/recruitment', '/hr/offboarding', '/hr/export'],
+    nav: ['/hr', '/hr/employees', '/hr/dashboard', '/hr/requests', '/hr/attendance', '/hr/shifts', '/hr/leave', '/hr/payroll', '/hr/performance', '/hr/discipline', '/hr/training', '/hr/recruitment', '/hr/offboarding'],
+    apiMounts: ['/hr', '/hr/requests', '/hr/attendance', '/hr/shifts', '/hr/leave', '/hr/payroll', '/hr/performance', '/hr/discipline', '/hr/training', '/hr/recruitment', '/hr/offboarding', '/hr/dashboard'],
     modules: ['registerHrModule'],
   },
   {
     code: 'finance',
-    routes: ['/finance/payroll', '/sales/invoices'],
-    nav: ['/finance/payroll', '/sales/invoices'],
-    apiMounts: ['/finance/payroll', '/finance/invoices'],
+    routes: ['/finance/payroll', '/finance/settlements', '/sales/invoices'],
+    nav: ['/finance/payroll', '/finance/settlements', '/sales/invoices'],
+    apiMounts: ['/finance/payroll', '/finance/settlements', '/finance/invoices'],
     modules: ['registerFinanceModule'],
   },
   {

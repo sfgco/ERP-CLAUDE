@@ -19,11 +19,10 @@ import {
 import { asyncHandler } from '../../core/http/async';
 import { validate } from '../../core/http/validate';
 import { actorFrom, type AuthedRequest } from '../../core/http/context';
-import { forbidden, notFound } from '../../core/http/errors';
+import { notFound } from '../../core/http/errors';
 import { requireAuth } from '../../core/auth/middleware';
 import { authorize } from '../../core/rbac/authorize';
 import { recordAudit } from '../../core/audit/service';
-import { nextNumber } from '../../core/numbering/service';
 import { Department, Position, Unit } from '../../core/org/model';
 import { Contract, Custody, Employee } from './model';
 import * as hr from './service';
@@ -374,32 +373,12 @@ hrRouter.post(
   authorize('hr.contracts', 'create'),
   validate(contractSchema),
   asyncHandler(async (req: AuthedRequest, res) => {
-    await hr.getEmployeeOrThrow(req.params.id);
+    const employee = await hr.getEmployeeOrThrow(req.params.id);
     const body = req.body as z.infer<typeof contractSchema>;
-    if (body.endDate && body.endDate < body.startDate)
-      throw forbidden('تاريخ النهاية قبل البداية', 'bad_request');
-    // Latest contract, active or already expired, so the version chain never restarts (review G3).
+    // H3b: one helper writes every contract row with the art. 37 / 53 / 54 / 86 checks (docs/HR_H3B_LEGAL.md T6–T8, E13).
     const previous = await Contract.findOne({ employeeId: req.params.id }).sort({ version: -1 });
-    const c = await Contract.create({
-      ...body,
-      employeeId: req.params.id,
-      number: await nextNumber('contract'),
-      version: (previous?.version ?? 0) + 1,
-      previousId: previous?._id,
-      createdBy: req.auth.user._id,
-    });
+    const c = await hr.createContract(employee, body as never, actorFrom(req));
     if (body.attachmentId) await markSensitiveFile(body.attachmentId, req.params.id);
-    if (previous && ['active', 'renewing'].includes(previous.status)) {
-      previous.status = 'expired';
-      previous.statusReason = 'renewed';
-      await previous.save();
-    }
-    await recordAudit(actorFrom(req), {
-      action: 'create',
-      resource: 'hr.contracts',
-      resourceId: String(c._id),
-      after: c,
-    });
     const emp = await Employee.findById(req.params.id).select('userId').lean();
     if (emp?.userId) {
       const { notify } = await import('../../core/notifications/service');
@@ -411,6 +390,24 @@ hrRouter.post(
       });
     }
     res.status(201).json(c);
+  }),
+);
+
+/**
+ * T9 path (a) (art. 55): the fixed term lapsed with no renewal clause and the employee kept working — HR confirms
+ * «استمر الطرفان»: a Saudi gets an indefinite contract from the day after the expiry; a non-Saudi a renewal for the
+ * work-permit period (art. 37).
+ */
+hrRouter.post(
+  '/employees/:id/contracts/:cid/continue',
+  requireAuth(),
+  authorize('hr.contracts', 'create'),
+  asyncHandler(async (req: AuthedRequest, res) => {
+    const employee = await hr.getEmployeeOrThrow(req.params.id);
+    const c = await Contract.findOne({ _id: req.params.cid, employeeId: req.params.id });
+    if (!c) throw notFound();
+    const { continueFixedTermContract } = await import('./recruitment.service');
+    res.status(201).json(await continueFixedTermContract(employee, c, actorFrom(req)));
   }),
 );
 

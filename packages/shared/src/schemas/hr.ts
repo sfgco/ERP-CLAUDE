@@ -11,11 +11,13 @@ export const EMPLOYMENT_TYPE_AR: Record<(typeof EMPLOYMENT_TYPES)[number], strin
   intern: 'متدرب',
   other: 'أخرى',
 };
-export const CONTRACT_TYPES = ['fixed_term', 'open_ended', 'seasonal', 'other'] as const;
+/** `specific_work`: T10 (art. 57) — a contract for a specific job ends when the job is done (H3b). */
+export const CONTRACT_TYPES = ['fixed_term', 'open_ended', 'seasonal', 'specific_work', 'other'] as const;
 export const CONTRACT_TYPE_AR: Record<(typeof CONTRACT_TYPES)[number], string> = {
   fixed_term: 'محدد المدة',
   open_ended: 'غير محدد المدة',
   seasonal: 'موسمي',
+  specific_work: 'عمل معيّن (المادة 57)',
   other: 'أخرى',
 };
 export const CONTRACT_STATUSES = ['active', 'expired', 'renewing', 'terminated'] as const;
@@ -42,6 +44,8 @@ export const EMPLOYEE_SENSITIVE_FIELDS = [
   'basicSalaryHalalas',
   'allowances',
   'bank',
+  /** E26 (art. 155): the declared pregnancy — HR and the employee only (H3b). */
+  'pregnancy',
 ] as const;
 /** Document types with expiry alerts [HR §3.9]. */
 export const EMPLOYEE_DOCUMENT_TYPES = [
@@ -115,6 +119,10 @@ export const createEmployeeSchema = z.object({
     })
     .optional(),
   medicalInsurance: z.boolean().default(false),
+  /** T4 (arts. 33, 38): work permit of a non-Saudi — number, licensed profession, expiry (H3b). */
+  workPermit: z.object({ number: z.string().trim().max(40).optional(), professionAr: z.string().trim().max(120).optional(), expiryDate: z.coerce.date().nullable().optional() }).optional(),
+  /** T14: cooperative health insurance policy (H3b). */
+  medicalInsurancePolicy: z.object({ number: z.string().trim().max(60).optional(), expiryDate: z.coerce.date().nullable().optional() }).optional(),
   /** First GOSI registration date — drives the contribution-rate group (DECISIONS §21 Q8) [HR §3.6.3]. */
   gosiJoinDate: z.coerce.date().nullable().optional(),
   /** Create the portal account now (temporary password returned once). */
@@ -200,10 +208,21 @@ export const contractSchema = z.object({
   type: z.enum(CONTRACT_TYPES),
   startDate: z.coerce.date(),
   endDate: z.coerce.date().nullable().optional(),
+  /** Legacy direct entry; when `probationDays` is given the server computes the end with the art. 53 excluded days (T7). */
   probationEndDate: z.coerce.date().nullable().optional(),
+  probationDays: z.number().int().min(0).max(180).optional(),
   durationMonths: z.number().int().positive().optional(),
   attachmentId: objectIdSchema.optional(),
   notes: z.string().trim().optional(),
+  // H3b legal fields (docs/HR_H3B_LEGAL.md T9, T10, E2, E9, E13)
+  wagePeriod: z.enum(['monthly', 'non_monthly']).optional(),
+  renewalClause: z.object({ enabled: z.boolean(), periodMonths: z.number().int().min(1).max(60).optional() }).optional(),
+  workDescription: z.string().trim().max(2000).optional(),
+  awardExcludesVariableWage: z.boolean().optional(),
+  awardExclusionClauseRef: z.string().trim().max(300).optional(),
+  nonCompete: z.object({ months: z.number().int().min(1).max(24), scopeAr: z.string().trim().min(3).max(1000) }).optional(),
+  /** T8: HR declares a different profession when re-hiring (art. 54 exception). */
+  differentProfession: z.boolean().optional(),
 });
 export const contractAddendumSchema = z.object({
   titleAr: z.string().trim().min(2),

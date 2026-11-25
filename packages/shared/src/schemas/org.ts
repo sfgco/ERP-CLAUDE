@@ -57,7 +57,18 @@ export const positionSchema = z.object({
 });
 export const positionUpdateSchema = positionSchema.partial();
 
+/** T7 (art. 53 as amended): the four official holidays excluded from probation are typed so the rule never guesses from the name. */
+export const HOLIDAY_KINDS = ['eid_fitr', 'eid_adha', 'national_day', 'founding_day', 'other'] as const;
+export type HolidayKind = (typeof HOLIDAY_KINDS)[number];
+export const HOLIDAY_KIND_AR: Record<HolidayKind, string> = {
+  eid_fitr: 'عيد الفطر',
+  eid_adha: 'عيد الأضحى',
+  national_day: 'اليوم الوطني',
+  founding_day: 'يوم التأسيس',
+  other: 'أخرى',
+};
 export const holidaySchema = z.object({
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   nameAr: z.string().trim().min(2),
+  kind: z.enum(HOLIDAY_KINDS).optional(),
 });

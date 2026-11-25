@@ -71,6 +71,7 @@ export const EVENT_TYPES = [
   'meeting',
   'visit',
   'training',
+  'interview', // H3b: recruitment interviews on the calendar [HR §3.2.6]
   'secondment',
   'follow_up',
   'event',

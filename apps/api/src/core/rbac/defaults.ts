@@ -32,6 +32,8 @@ export const CORE_ROLES: RoleDefinition[] = [
     system: true,
     departmentScoped: false,
     grants: [
+      // H3b [HR §3.10.6, IT §7.3]: the thin IT stage of end of service (accounts, assets) — no HR or financial data.
+      { resource: 'it.offboarding', actions: ['view', 'edit'], scope: 'all' },
       { resource: 'parties', actions: ['view'], scope: 'all' },
       { resource: 'users', actions: ALL_ACTIONS, scope: 'all' },
       // Authenticator resets and other account-security actions (security review A1).
@@ -102,6 +104,8 @@ export const CORE_ROLES: RoleDefinition[] = [
       { resource: 'hr.improvement_plans', actions: ['view'], scope: 'own' },
       { resource: 'hr.discipline', actions: ['view'], scope: 'own' },
       { resource: 'hr.training', actions: ['view'], scope: 'own' },
+      // H3b [HR §3.10, HR_PLAN §6]: own end-of-service record and the resignation through «رفع طلب» (art. 79 bis).
+      { resource: 'hr.offboarding', actions: ['view', 'create'], scope: 'own' },
       { resource: 'tickets', actions: ['view', 'create'], scope: 'own' },
       { resource: 'news', actions: ['view', 'create'], scope: 'all' },
       { resource: 'hr.reports', actions: ['view', 'create'], scope: 'own' },
@@ -131,6 +135,10 @@ export const CORE_ROLES: RoleDefinition[] = [
       { resource: 'hr.improvement_plans', actions: ['view'], scope: 'department' },
       { resource: 'hr.discipline', actions: ['view'], scope: 'department' },
       { resource: 'hr.training', actions: ['view', 'create', 'export'], scope: 'department' }, // «تقارير التدريب لكل قسم» [HR §3.8.8]
+      // H3b [HR §3.2.1, HR_PLAN §6]: raises requisitions for the department; follows its applicants, offers (no salary) and endings.
+      { resource: 'hr.recruitment', actions: ['view', 'create'], scope: 'department' },
+      { resource: 'hr.offers', actions: ['view'], scope: 'department' },
+      { resource: 'hr.offboarding', actions: ['view'], scope: 'department' },
       { resource: 'tickets', actions: ['view', 'edit', 'approve'], scope: 'department' },
       { resource: 'news', actions: ['view', 'create', 'edit', 'approve'], scope: 'department' },
       { resource: 'hr.reports', actions: ['view'], scope: 'department' },
@@ -158,6 +166,10 @@ export const CORE_ROLES: RoleDefinition[] = [
       { resource: 'hr.improvement_plans', actions: ALL_ACTIONS, scope: 'all' },
       { resource: 'hr.discipline', actions: ['view', 'create', 'edit', 'export'], scope: 'all' },
       { resource: 'hr.training', actions: ALL_ACTIONS, scope: 'all' },
+      // H3b [HR §3.2, §3.10]: runs recruitment and end of service; approvals stay with the HR manager (Q9, Q10).
+      { resource: 'hr.recruitment', actions: ['view', 'create', 'edit', 'export'], scope: 'all' },
+      { resource: 'hr.offers', actions: ['view', 'create', 'edit', 'export'], scope: 'all' },
+      { resource: 'hr.offboarding', actions: ['view', 'create', 'edit', 'export'], scope: 'all' },
       { resource: 'org.units', actions: ALL_ACTIONS, scope: 'all' },
       { resource: 'org.branches', actions: ['view', 'create', 'edit'], scope: 'all' },
       { resource: 'org.sites', actions: ['view', 'create', 'edit'], scope: 'all' },
@@ -204,6 +216,9 @@ export const CORE_ROLES: RoleDefinition[] = [
       { resource: 'hr.improvement_plans', actions: ALL_ACTIONS, scope: 'all' },
       { resource: 'hr.discipline', actions: ALL_ACTIONS, scope: 'all' },
       { resource: 'hr.training', actions: ALL_ACTIONS, scope: 'all' },
+      { resource: 'hr.recruitment', actions: ALL_ACTIONS, scope: 'all' },
+      { resource: 'hr.offers', actions: ALL_ACTIONS, scope: 'all' },
+      { resource: 'hr.offboarding', actions: ALL_ACTIONS, scope: 'all' },
       { resource: 'documents', actions: ALL_ACTIONS, scope: 'all' },
       { resource: 'tasks', actions: ['view', 'create', 'edit'], scope: 'all' },
       { resource: 'calendar', actions: ['view', 'create', 'edit'], scope: 'all' },
@@ -275,6 +290,10 @@ export const CORE_ROLES: RoleDefinition[] = [
       { resource: 'hr.goals', actions: ['view'], scope: 'all' },
       { resource: 'hr.appraisals', actions: ['view'], scope: 'all' },
       { resource: 'hr.training', actions: ['view'], scope: 'all' },
+      // H3b (Q10): approves requisitions and offers above the thresholds; reads end of service.
+      { resource: 'hr.recruitment', actions: ['view', 'approve'], scope: 'all' },
+      { resource: 'hr.offers', actions: ['view', 'approve'], scope: 'all' },
+      { resource: 'hr.offboarding', actions: ['view'], scope: 'all' },
       { resource: 'news', actions: ['view', 'create', 'edit', 'approve'], scope: 'all' },
       { resource: 'hr.reports', actions: ['view'], scope: 'all' },
       { resource: 'parties', actions: ['view'], scope: 'all' },
@@ -297,6 +316,15 @@ export const CORE_ROLES: RoleDefinition[] = [
       { resource: 'sales.reports', actions: ['view', 'export'], scope: 'all' },
       { resource: 'api.docs', actions: ['view'], scope: 'all' },
     ],
+    fieldRules: [HIDE_SENSITIVE],
+  },
+  {
+    /** H3b: implied for every member of the IT department (DEPARTMENT_MEMBER_IMPLIED_ROLES) — the thin offboarding queue (IT §7.3). */
+    code: 'it_staff',
+    nameAr: 'موظف التقنية',
+    system: true,
+    departmentScoped: false,
+    grants: [{ resource: 'it.offboarding', actions: ['view', 'edit'], scope: 'all' }],
     fieldRules: [HIDE_SENSITIVE],
   },
 ];

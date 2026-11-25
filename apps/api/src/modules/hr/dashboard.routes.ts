@@ -22,6 +22,10 @@ import { EmployeeReport } from './reports.model';
 import { AttendanceDay } from './attendance.model';
 import { Appraisal, AppraisalCycle, Goal } from './performance.model';
 import { Training } from './training.model';
+import { Applicant, JobRequisition, Offer } from './recruitment.model';
+import { Offboarding } from './offboarding.model';
+import { legalSettingsStatus } from './offboarding.service';
+import { saudizationStatus } from './recruitment.service';
 import { dayTime, summarizeDays } from './attendance.service';
 
 export const dashboardRouter = Router();
@@ -261,6 +265,23 @@ dashboardRouter.get(
       secondmentsWithoutReport: employees.filter((e) => e.secondment?.destination && !e.secondment.reportedAt)
         .length,
       probationEnding30: probation,
+      // H3b [HR §5 «التوظيف», «إنهاء الخدمة»; DECISIONS §22 O2]: queues, the Saudization rate and the blank legal settings.
+      recruitment: {
+        openRequisitions: await JobRequisition.countDocuments({ deletedAt: null, state: { $in: ['submitted', 'approved', 'posted'] } }),
+        awaitingApproval: await JobRequisition.countDocuments({ deletedAt: null, state: 'submitted' }),
+        applicantsInPipeline: await Applicant.countDocuments({ deletedAt: null, stage: { $in: ['new', 'screened', 'shortlisted', 'interviewing', 'offered'] } }),
+        offersPending: await Offer.countDocuments({ deletedAt: null, state: 'pending_approval' }),
+        offersAccepted: await Offer.countDocuments({ deletedAt: null, state: 'accepted' }),
+        govRegistrationMissing: await Offer.countDocuments({ deletedAt: null, state: { $in: ['contracted', 'onboarded'] }, $or: [{ 'govRegistration.qiwaRef': null }, { 'govRegistration.gosiRef': null }] }),
+      },
+      offboarding: {
+        resignationsPending: await Offboarding.countDocuments({ deletedAt: null, state: { $in: ['resignation_submitted', 'resignation_postponed'] } }),
+        awaitingReview: await Offboarding.countDocuments({ deletedAt: null, state: 'under_review' }),
+        inProgress: await Offboarding.countDocuments({ deletedAt: null, state: 'approved' }),
+        settlementsDueSoon: await Offboarding.countDocuments({ deletedAt: null, state: 'approved', 'settlement.state': { $ne: 'paid' }, 'settlement.dueAt': { $lte: d(3) } }),
+      },
+      saudization: await saudizationStatus().then((s) => ({ ratePct: s.ratePct, requiredRatePct: s.setting.requiredRatePct, below: s.below })),
+      legalSettings: await legalSettingsStatus(),
       recentChanges: events.map((e) => ({
         _id: e._id,
         employeeId: e.employeeId,

@@ -1,5 +1,5 @@
 import type { WorkflowDefinitionInput } from '@eayni/shared';
-import { APPRAISAL_STATE_AR, DISCIPLINARY_STATE_AR, PAYROLL_RUN_STATE_AR } from '@eayni/shared';
+import { APPRAISAL_STATE_AR, DISCIPLINARY_STATE_AR, OFFBOARDING_STATE_AR, OFFER_STATE_AR, PAYROLL_RUN_STATE_AR, REQUISITION_STATE_AR } from '@eayni/shared';
 
 /**
  * HR H3a workflow definitions (core engine, editable in /admin/workflows) — HR_PLAN §4.5–4.7. Actor relations are
@@ -94,4 +94,99 @@ export const DISCIPLINARY_WORKFLOW: WorkflowDefinitionInput = {
   ],
 };
 
-export const HR_WORKFLOWS: WorkflowDefinitionInput[] = [PAYROLL_RUN_WORKFLOW, APPRAISAL_WORKFLOW, DISCIPLINARY_WORKFLOW];
+/**
+ * H3b — HR_PLAN §4.3: «طلب احتياج وظيفي». Relations: requester · department_manager · hr_officer · hr_manager · approver
+ * (the policy's approver role, or the executive above the thresholds — never the requester, FIN §12 pattern).
+ */
+export const REQUISITION_WORKFLOW: WorkflowDefinitionInput = {
+  type: 'hr_requisition',
+  nameAr: 'طلب توظيف',
+  version: 1,
+  initialState: 'draft',
+  states: {
+    draft: { labelAr: REQUISITION_STATE_AR.draft, category: 'open', owner: 'requester' },
+    submitted: { labelAr: REQUISITION_STATE_AR.submitted, category: 'open', slaBusinessDays: 3, owner: 'approver' },
+    needs_completion: { labelAr: REQUISITION_STATE_AR.needs_completion, category: 'waiting', owner: 'requester' },
+    approved: { labelAr: REQUISITION_STATE_AR.approved, category: 'open', slaBusinessDays: 2, owner: 'department' },
+    posted: { labelAr: REQUISITION_STATE_AR.posted, category: 'open', owner: 'department' },
+    closed: { labelAr: REQUISITION_STATE_AR.closed, category: 'done' },
+    rejected: { labelAr: REQUISITION_STATE_AR.rejected, category: 'done' },
+    cancelled: { labelAr: REQUISITION_STATE_AR.cancelled, category: 'cancelled' },
+  },
+  transitions: [
+    { code: 'submit', labelAr: 'رفع للاعتماد', from: ['draft', 'needs_completion'], to: 'submitted', allow: ['requester', 'hr_officer', 'hr_manager'] },
+    { code: 'return', labelAr: 'إعادة للاستكمال', from: ['submitted'], to: 'needs_completion', allow: ['approver'], requireReason: true },
+    { code: 'approve', labelAr: 'اعتماد', from: ['submitted'], to: 'approved', allow: ['approver'] },
+    { code: 'reject', labelAr: 'رفض', from: ['submitted'], to: 'rejected', allow: ['approver'], requireReason: true },
+    { code: 'post', labelAr: 'الإعلان عن الوظيفة', from: ['approved'], to: 'posted', allow: ['hr_officer', 'hr_manager'] },
+    { code: 'close', labelAr: 'إغلاق', from: ['approved', 'posted'], to: 'closed', allow: ['hr_officer', 'hr_manager', 'system'] },
+    { code: 'cancel', labelAr: 'إلغاء', from: ['draft', 'needs_completion', 'submitted', 'approved', 'posted'], to: 'cancelled', allow: ['requester', 'hr_manager'], requireReason: true },
+  ],
+};
+
+/** H3b — HR_PLAN §4.4: «العرض الوظيفي». Relations: creator · hr_officer · hr_manager · approver · executive · system. */
+export const OFFER_WORKFLOW: WorkflowDefinitionInput = {
+  type: 'hr_offer',
+  nameAr: 'عرض وظيفي',
+  version: 1,
+  initialState: 'draft',
+  states: {
+    draft: { labelAr: OFFER_STATE_AR.draft, category: 'open', owner: 'requester' },
+    pending_approval: { labelAr: OFFER_STATE_AR.pending_approval, category: 'open', slaBusinessDays: 2, owner: 'approver' },
+    approved: { labelAr: OFFER_STATE_AR.approved, category: 'open', owner: 'requester' },
+    sent: { labelAr: OFFER_STATE_AR.sent, category: 'waiting', owner: 'none' },
+    accepted: { labelAr: OFFER_STATE_AR.accepted, category: 'open', slaBusinessDays: 5, owner: 'requester' },
+    declined: { labelAr: OFFER_STATE_AR.declined, category: 'done' },
+    expired: { labelAr: OFFER_STATE_AR.expired, category: 'done' },
+    withdrawn: { labelAr: OFFER_STATE_AR.withdrawn, category: 'cancelled' },
+    contracted: { labelAr: OFFER_STATE_AR.contracted, category: 'open', owner: 'requester' },
+    onboarded: { labelAr: OFFER_STATE_AR.onboarded, category: 'done' },
+  },
+  transitions: [
+    { code: 'submit', labelAr: 'رفع للاعتماد', from: ['draft'], to: 'pending_approval', allow: ['creator', 'hr_officer', 'hr_manager'] },
+    { code: 'approve', labelAr: 'اعتماد العرض', from: ['pending_approval'], to: 'approved', allow: ['approver'] },
+    { code: 'reject', labelAr: 'رفض العرض', from: ['pending_approval'], to: 'draft', allow: ['approver'], requireReason: true },
+    { code: 'send', labelAr: 'إرسال للمرشح', from: ['approved'], to: 'sent', allow: ['hr_officer', 'hr_manager'] },
+    { code: 'accept', labelAr: 'تسجيل قبول المرشح', from: ['sent'], to: 'accepted', allow: ['hr_officer', 'hr_manager'] },
+    { code: 'decline', labelAr: 'تسجيل رفض المرشح', from: ['sent'], to: 'declined', allow: ['hr_officer', 'hr_manager'], requireReason: true },
+    { code: 'expire', labelAr: 'انتهاء الصلاحية', from: ['sent'], to: 'expired', allow: ['system', 'hr_manager'] },
+    { code: 'withdraw', labelAr: 'سحب العرض', from: ['draft', 'pending_approval', 'approved', 'sent'], to: 'withdrawn', allow: ['hr_manager', 'creator'], requireReason: true },
+    { code: 'contract', labelAr: 'استكمال إجراءات التعاقد', from: ['accepted'], to: 'contracted', allow: ['hr_officer', 'hr_manager'] },
+    { code: 'onboard', labelAr: 'المباشرة', from: ['contracted'], to: 'onboarded', allow: ['system', 'hr_officer', 'hr_manager'] },
+  ],
+};
+
+/**
+ * H3b — HR_PLAN §4.8 + docs/HR_H3B_LEGAL.md E25: «إنهاء الخدمة». Relations: requester · subject (the leaving employee) ·
+ * direct_manager · hr_officer · hr_manager · approver · system. The art. 79 bis clock is kept by the service.
+ */
+export const OFFBOARDING_WORKFLOW: WorkflowDefinitionInput = {
+  type: 'hr_offboarding',
+  nameAr: 'إنهاء الخدمة',
+  version: 1,
+  initialState: 'requested',
+  states: {
+    resignation_submitted: { labelAr: OFFBOARDING_STATE_AR.resignation_submitted, category: 'open', slaBusinessDays: 10, owner: 'approver' },
+    resignation_postponed: { labelAr: OFFBOARDING_STATE_AR.resignation_postponed, category: 'waiting', owner: 'approver' },
+    resignation_withdrawn: { labelAr: OFFBOARDING_STATE_AR.resignation_withdrawn, category: 'cancelled' },
+    requested: { labelAr: OFFBOARDING_STATE_AR.requested, category: 'open', owner: 'requester' },
+    under_review: { labelAr: OFFBOARDING_STATE_AR.under_review, category: 'open', slaBusinessDays: 3, owner: 'approver' },
+    approved: { labelAr: OFFBOARDING_STATE_AR.approved, category: 'open', owner: 'department' },
+    completed: { labelAr: OFFBOARDING_STATE_AR.completed, category: 'done' },
+    rejected: { labelAr: OFFBOARDING_STATE_AR.rejected, category: 'done' },
+    cancelled: { labelAr: OFFBOARDING_STATE_AR.cancelled, category: 'cancelled' },
+  },
+  transitions: [
+    { code: 'submit', labelAr: 'رفع للمراجعة', from: ['requested'], to: 'under_review', allow: ['requester', 'hr_officer', 'hr_manager', 'system'] },
+    { code: 'approve', labelAr: 'مراجعة واعتماد الإجراء', from: ['under_review'], to: 'approved', allow: ['approver'] },
+    { code: 'reject', labelAr: 'رفض', from: ['under_review'], to: 'rejected', allow: ['approver'], requireReason: true },
+    { code: 'complete', labelAr: 'إقفال — منتهي الخدمة', from: ['approved'], to: 'completed', allow: ['hr_officer', 'hr_manager', 'system'] },
+    { code: 'cancel', labelAr: 'إلغاء', from: ['requested', 'under_review', 'approved'], to: 'cancelled', allow: ['hr_manager'], requireReason: true },
+    // E25 — art. 79 bis
+    { code: 'accept_resignation', labelAr: 'قبول الاستقالة', from: ['resignation_submitted', 'resignation_postponed'], to: 'approved', allow: ['approver', 'system'] },
+    { code: 'postpone_resignation', labelAr: 'تأجيل قبول الاستقالة (حتى 60 يوماً، بسبب)', from: ['resignation_submitted'], to: 'resignation_postponed', allow: ['approver'], requireReason: true, requiredFields: ['resignation.postponedUntil'] },
+    { code: 'withdraw_resignation', labelAr: 'العدول عن الاستقالة (خلال 7 أيام)', from: ['resignation_submitted', 'resignation_postponed'], to: 'resignation_withdrawn', allow: ['subject'] },
+  ],
+};
+
+export const HR_WORKFLOWS: WorkflowDefinitionInput[] = [PAYROLL_RUN_WORKFLOW, APPRAISAL_WORKFLOW, DISCIPLINARY_WORKFLOW, REQUISITION_WORKFLOW, OFFER_WORKFLOW, OFFBOARDING_WORKFLOW];

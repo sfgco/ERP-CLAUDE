@@ -17,6 +17,7 @@ import { seedNews } from './seedNews';
 import { seedEmployeeReports } from './seedEmployeeReports';
 import { seedSales } from './seedSales';
 import { seedH3a } from './seedH3a';
+import { seedH3b } from './seedH3b';
 
 /**
  * The seed carries a default admin password and sample data. It may only ever run against the local
@@ -123,8 +124,10 @@ export async function seed(): Promise<{
   const salesData = await seedSales();
   // Payroll, performance and training samples come last: they read the employees, the attendance and the tasks (H3a).
   const h3a = await seedH3a();
+  // Recruitment and end of service samples (H3b): they read the departments, the employees and the H3a payroll.
+  const h3b = await seedH3b();
   logger.info(
-    { attendance, requests, tasks, tickets, news, reports, salesData, h3a },
+    { attendance, requests, tasks, tickets, news, reports, salesData, h3a, h3b },
     'sample HR requests, tasks, tickets, news, reports and sales data',
   );
   return { adminEmail, adminPassword, sampleEmployees: hr.created, sampleLogins: hr.logins, samplePassword };

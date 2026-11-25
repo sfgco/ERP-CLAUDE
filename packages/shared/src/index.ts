@@ -19,6 +19,8 @@ export * from './schemas/attendance';
 export * from './schemas/payroll';
 export * from './schemas/performance';
 export * from './schemas/training';
+export * from './schemas/recruitment';
+export * from './schemas/offboarding';
 export * from './schemas/tickets';
 export * from './arabic';
 export * from './schemas/news';

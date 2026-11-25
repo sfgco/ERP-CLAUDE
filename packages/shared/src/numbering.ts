@@ -33,6 +33,10 @@ export const NUMBER_PREFIXES = {
   payrollRun: 'PAY',
   disciplinary: 'DIS',
   training: 'TRN',
+  // HR H3b [HR §3.2, §3.10]
+  requisition: 'REQ',
+  offer: 'OFR',
+  offboarding: 'EOS',
 } as const;
 export type NumberPrefixKey = keyof typeof NUMBER_PREFIXES;
 export const NUMBER_PATTERN = /^[A-Z]{2,5}-\d{4}-\d{5,}$/;

@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router';
 import { get, type Paged } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import { Alert, Card, PageHeader, QueryError, Spinner } from '@/shared/ui';
+import { Card, PageHeader, QueryError, Spinner } from '@/shared/ui';
 import { Kpi } from '../dashboards/_ui';
 
 interface Dash {
@@ -14,6 +14,10 @@ interface Dash {
   probationEnding30: number;
   attendance: { missingPunches: number; late: number; absent: number; onLeaveToday: number };
   performance: { appraisalsTotal: number; appraisalsDone: number; appraisalCompletionBp: number | null };
+  recruitment?: { openRequisitions: number; awaitingApproval: number; applicantsInPipeline: number; offersPending: number; offersAccepted: number; govRegistrationMissing: number };
+  offboarding?: { resignationsPending: number; awaitingReview: number; inProgress: number; settlementsDueSoon: number };
+  saudization?: { ratePct: number | null; requiredRatePct: number | null; below: boolean };
+  legalSettings?: { complete: boolean; missing: { key: string; labelAr: string }[] };
 }
 
 /**
@@ -163,7 +167,35 @@ export function HrHomePage() {
           )}
         </div>
       </Card>
-      <Alert kind="info">{t('hr.home.comingSoon')}</Alert>
+      {/* H3b [HR §3.2, §3.10; DECISIONS §22 O2]: recruitment and end-of-service queues, the Saudization rate, the blank legal settings. */}
+      {(d.recruitment || d.offboarding) && (
+        <>
+          <h2 className="mb-2 mt-6 text-sm font-semibold text-slate-700">{t('hr.home.recruitment')} · {t('hr.home.offboarding')}</h2>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {d.recruitment && can('hr.recruitment', 'view') && (
+              <>
+                <Kpi to="/hr/recruitment?state=submitted" label={t('hr.home.recruitmentQueue')} value={d.recruitment.awaitingApproval} tone={d.recruitment.awaitingApproval ? 'amber' : 'slate'} />
+                <Kpi to="/hr/recruitment" label={t('hr.home.offersAccepted')} value={d.recruitment.offersAccepted} tone={d.recruitment.offersAccepted ? 'amber' : 'slate'} />
+              </>
+            )}
+            {d.offboarding && can('hr.offboarding', 'view') && (
+              <>
+                <Kpi to="/hr/offboarding?state=resignation_submitted" label={t('hr.home.resignations')} value={d.offboarding.resignationsPending} tone={d.offboarding.resignationsPending ? 'amber' : 'slate'} />
+                <Kpi to="/hr/offboarding?state=under_review" label={t('hr.home.offboardingReview')} value={d.offboarding.awaitingReview} tone={d.offboarding.awaitingReview ? 'amber' : 'slate'} />
+                <Kpi to="/hr/offboarding?state=approved" label={t('hr.home.offboardingInProgress')} value={d.offboarding.inProgress} tone="blue" />
+                <Kpi to="/hr/offboarding?state=approved" label={t('hr.home.settlementsDue')} value={d.offboarding.settlementsDueSoon} tone={d.offboarding.settlementsDueSoon ? 'red' : 'slate'} />
+              </>
+            )}
+            {d.saudization && <Kpi to="/hr/recruitment" label={t('hr.home.saudization')} value={d.saudization.ratePct === null ? '—' : `${d.saudization.ratePct}%`} tone={d.saudization.below ? 'red' : 'green'} />}
+            {d.legalSettings && !d.legalSettings.complete && <Kpi to="/admin/settings" label={t('hr.home.legalSettings')} value={d.legalSettings.missing.length} tone="amber" />}
+          </div>
+          {d.legalSettings && !d.legalSettings.complete && (
+            <p className="mt-2 text-xs text-slate-500">
+              {t('hr.home.legalSettingsHint')}: {d.legalSettings.missing.map((m) => m.labelAr).join(' · ')}
+            </p>
+          )}
+        </>
+      )}
     </>
   );
 }

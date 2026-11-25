@@ -39,20 +39,20 @@ Status legend: ✅ built · 🔜 planned slice · ⏸ waits for an owner answer 
 
 | § | Bullet | Implementation | Test | Status |
 |---|---|---|---|---|
-| §3.2 م1 | تقديم طلب احتياج وظيفي من القسم المعني | `jobRequisitions` `REQ-YYYY-#####`, workflow `hr_requisition`, `/manager/requisitions` | — | 🔜 H3b (raisers ⏸ Q10 default: department managers) |
-| §3.2 م2 | تحديد المسمى الوظيفي والعدد المطلوب ومبررات الاحتياج | requisition fields `positionId / titleAr`, `headcount`, `justification` | — | 🔜 H3b |
-| §3.2 م3 | اعتماد الطلب من صاحب الصلاحية | transition `approve` by `hr.recruitment.requisitionApprover` (default HR manager) | — | 🔜 H3b (⏸ Q10) |
-| §3.2 م4 | الإعلان عن الوظيفة واستقبال طلبات التوظيف | `post` with channels + external refs; `applicants` entered by HR | — | 🔜 H3b (channels ⏸ Q10) |
-| §3.2 م5 | فرز السير الذاتية وتحديد المرشحين | applicant stages new → screened → shortlisted | — | 🔜 H3b |
-| §3.2 م6 | جدولة المقابلات وتسجيل نتائجها | `interviews` + calendar event kind `interview`, scores per criteria | — | 🔜 H3b (criteria ⏸ Q10) |
-| §3.2 م7 | إصدار العرض الوظيفي | `offers` `OFR-YYYY-#####`, workflow `hr_offer` | — | 🔜 H3b |
-| §3.2 م8 | موافقة المرشح على العرض الوظيفي | `accept` with date and signed file | — | 🔜 H3b |
-| §3.2 م9 | استكمال إجراءات التعاقد | `contract`: creates employee file + contract + user account from the offer in one transaction (golden rule 2) | — | 🔜 H3b |
-| §3.2 م10 | تسجيل الموظف في الأنظمة ذات العلاقة، مثل قوى والتأمينات الاجتماعية وفق الإجراءات المعتمدة | `offers.govRegistration` {qiwaRef, gosiRef} recorded by hand; integration = study (§7.12) | — | 🔜 H3b (integration ⏸ Q15, H4 study) |
-| §3.2 إضافية | إمكانية حفظ طلب التوظيف كمسودة واستكماله لاحقاً | requisition state `draft` (مسودة) | — | 🔜 H3b |
-| §3.2 إضافية | متابعة حالة كل مرشح | `applicants.stage` + `applicantEvents` | — | 🔜 H3b |
-| §3.2 إضافية | توثيق مراحل التوظيف والموافقات | workflow stage log on requisition and offer | — | 🔜 H3b |
-| §3.2 إضافية | إمكانية الرجوع إلى سجل طلبات التوظيف السابقة | `/hr/recruitment` list with closed requisitions searchable | — | 🔜 H3b |
+| §3.2 م1 | تقديم طلب احتياج وظيفي من القسم المعني | `jobRequisitions` `REQ-YYYY-#####`, workflow `hr_requisition`; the department manager raises for their department (`hr.recruitment:create` department), HR too (`/hr/recruitment`) | `hr-h3b.test.ts` «T1/T3/T12 + Q10: the department manager raises…» (another department's manager → 404 / 403) | ✅ H3b |
+| §3.2 م2 | تحديد المسمى الوظيفي والعدد المطلوب ومبررات الاحتياج | requisition fields `positionId / titleAr`, `headcount`, `justification`, `requirements` (professional only — T1), `salaryRange` (sensitive, hidden from managers), `recruitmentCosts` (T12) | `hr-h3b.test.ts` «T1/T3/T12 + Q10…» | ✅ H3b |
+| §3.2 م3 | اعتماد الطلب من صاحب الصلاحية | `approve` / `return` / `reject` by `hr.recruitment.requisitionApproverRole` (HR manager; the executive above the Q10 thresholds); the requester never approves; the Saudization warning (T3) travels with the submission | `hr-h3b.test.ts` «T1/T3/T12 + Q10…» (officer 403, requester 403, return → needs_completion → resubmit) | ✅ H3b |
+| §3.2 م4 | الإعلان عن الوظيفة واستقبال طلبات التوظيف | `post` with the policy's channels (unknown channel refused) + external refs + `closesAt`; applicants by hand and by **CSV import** (row-by-row report), duplicates by phone / e-mail refused (DECISIONS §22 Q6) | `hr-h3b.test.ts` «T1: applicants by hand and by CSV…» | ✅ H3b |
+| §3.2 م5 | فرز السير الذاتية وتحديد المرشحين | stages new → screened → shortlisted (→ interviewing → offered → hired / rejected / withdrawn), `APPLICANT_STAGE_NEXT` drag rules; rejection only with a reason from the professional list (T1, art. 3); CVs of rejected applicants purged after 12 months (job `hr.recruitment.jobs`, PDPL) | `hr-h3b.test.ts` «T1: applicants…», «T13 deadlines and the CV retention job…» | ✅ H3b |
+| §3.2 م6 | جدولة المقابلات وتسجيل نتائجها | `interviews` + calendar event type `interview` (panel notified), scores on the policy criteria within the scale, recommendation; the panel or HR records the result | `hr-h3b.test.ts` «T1: applicants…» (unknown criterion / out-of-scale → 400) | ✅ H3b |
+| §3.2 م7 | إصدار العرض الوظيفي | `offers` `OFR-YYYY-#####`, workflow `hr_offer`; creation runs T2 (age), T6 (art. 37), T7 (art. 53 ≤ 180), T9 (renewal clause), T10 (art. 57), E9 (art. 83), E13 (art. 86 clause ref); the creator never approves; above the salary range → executive | `hr-h3b.test.ts` «T2/T4/T5/T6/T7/T9/T10/T13/T14 + Q10…» | ✅ H3b |
+| §3.2 م8 | موافقة المرشح على العرض الوظيفي | `send` → `accept` (date + signed file) / `decline` (reason) / `expire` (job) / `withdraw` | `hr-h3b.test.ts` «T2/T4/T5…», «T13 deadlines…» (expiry job) | ✅ H3b |
+| §3.2 م9 | استكمال إجراءات التعاقد | `contract`: employee file + contract (through `createContract`, T6–T8) + portal account from the offer and the applicant — only identity, e-mail, gender, bank and insurance policy (T14) are typed; a refused contract withdraws the file (nothing half-hired); applicant `hired`, requisition `hiredCount` (+ auto-close), event `hr.employee.hired`, the direct manager notified | `hr-h3b.test.ts` «T2/T4/T5…» | ✅ H3b |
+| §3.2 م10 | تسجيل الموظف في الأنظمة ذات العلاقة، مثل قوى والتأمينات الاجتماعية وفق الإجراءات المعتمدة | `record_gov_registration` {qiwaRef, qiwaAt, gosiRef, gosiAt} by hand (the GOSI date lands on the file); overdue alerts once `hr.gov` is filled (blank by owner decision O2); integration = study (§7.12, H4) | `hr-h3b.test.ts` «T2/T4/T5…», «T13 deadlines…» | ✅ H3b (integration ⏸ Q15) |
+| §3.2 إضافية | إمكانية حفظ طلب التوظيف كمسودة واستكماله لاحقاً | `draft: true` keeps the requisition in «مسودة»; `PATCH` while draft / needs_completion | `hr-h3b.test.ts` «T1/T3/T12…» | ✅ H3b |
+| §3.2 إضافية | متابعة حالة كل مرشح | `applicants.stage` + append-only `applicantEvents` (stage moves, notes, interviews, offers) | `hr-h3b.test.ts` | ✅ H3b |
+| §3.2 إضافية | توثيق مراحل التوظيف والموافقات | stage log on `hr_requisition` and `hr_offer` (shown on both screens) | `hr-h3b.test.ts` | ✅ H3b |
+| §3.2 إضافية | إمكانية الرجوع إلى سجل طلبات التوظيف السابقة | `/hr/recruitment` with the state filter (closed / rejected / cancelled kept); export `hr.requisitions`, `hr.applicants`, `hr.offers` | `hr-h3b.test.ts` «Visibility and exports…» | ✅ H3b |
 
 ## §3.3 ملف الموظف الإلكتروني
 
@@ -220,6 +220,7 @@ Built in **H3a** (2026-11-24, branch `hr-h3a`; owner reviews of 2026-11-24 and 2
 | § | Bullet | Implementation | Test | Status |
 |---|---|---|---|---|
 | §3.9 | حفظ عقود العمل | `contracts` (`GET/POST /hr/employees/:id/contracts`, addenda, status), file claimed as sensitive document | `hr.test.ts` «contracts: renewal supersedes the previous one…» | ✅ |
+| §3.9 (H3b) | قواعد العقد من نظام العمل | `createContract` (one helper for the route and the hire): non-Saudi fixed-term with the permit period (art. 37, T6), probation ≤ 180 with the excluded days (Eids, National Day, Founding Day, sick leave — `holidays.kind`, art. 53, T7), no second probation within six months unless a different profession (art. 54, T8), renewal chain with `originalStartDate` (art. 56), the art. 55 paths by the daily job `hr.contracts.fixedterm` + `POST …/contracts/:cid/continue` (T9), `wagePeriod`, `nonCompete` ≤ 24 months (art. 83), `awardExcludesVariableWage` + clause (art. 86) | `hr-h3b.test.ts` «T7…», «T6…», «T8…», «T9…» | ✅ H3b |
 | §3.9 | حفظ الهويات الوطنية والإقامات | `identity.*` on the file + document type `identity` | `golive-access.test.ts` E2 | ✅ |
 | §3.9 | حفظ المؤهلات العلمية | document type `qualification` | — (no dedicated test) | ✅ |
 | §3.9 | حفظ الشهادات المهنية | document type `professional_certificate` | — (no dedicated test) | ✅ |
@@ -234,16 +235,16 @@ Built in **H3a** (2026-11-24, branch `hr-h3a`; owner reviews of 2026-11-24 and 2
 
 | § | Bullet | Implementation | Test | Status |
 |---|---|---|---|---|
-| §3.10.1 | تسجيل طلب إنهاء الخدمة | `offboardings` `EOS-YYYY-#####`, workflow `hr_offboarding` | — | 🔜 H3b |
-| §3.10.2 | تحديد سبب وتاريخ إنهاء الخدمة | `kind / reason / lastWorkingDay` (reasons list ⏸ Q9) | — | 🔜 H3b |
-| §3.10.3 | مراجعة واعتماد الإجراء | HR manager `approve` → status مستقيل / منتهي الخدمة with last working day (existing `changeStatus`, DECISIONS §11.3) | `hr.test.ts` «end of service keeps access until the last working day…» (status part) | ✅ status · 🔜 H3b flow |
-| §3.10.4 | إعداد المخالصة النهائية | `offboardings.settlement` per arts. 84–85, 111 (⏸ Q9) | — | 🔜 H3b |
-| §3.10.5 | استرداد العهد المسلمة للموظف | custody return exists (`POST …/custody/:cid/return`); checklist on the offboarding | `hr.test.ts` «custody items are issued and returned…» | ✅ return · 🔜 H3b checklist |
-| §3.10.6 | إغلاق الصلاحيات والحسابات المرتبطة بالموظف | job `hr.accounts.deactivate` (frequent) disables the account and ends sessions after the last working day; revert re-enables | `hr.test.ts` «end of service…»; `golive-g.test.ts` «G4: account deactivation re-checks the employee at write time…»; `core/auth/users.test.ts` «disabling an account ends its sessions immediately» | ✅ (IT thin task 🔜 H3b) |
-| §3.10.7 | إجراء مقابلة الخروج وتوثيق نتائجها | `offboardings.exitInterview` (template ⏸ Q13) | — | 🔜 H3b |
-| §3.10.8 | إصدار شهادة الخبرة عند الطلب | request type `experience_certificate` + template exist | `requests.test.ts` «salary and experience certificates are generated…» | ✅ (link from the offboarding 🔜 H3b) |
-| §3.10.9 | تحديث حالة الموظف إلى منتهي الخدمة | `changeStatus` → `terminated` («منتهي الخدمة») | `hr.test.ts` | ✅ |
-| §3.10.10 | الاحتفاظ بملف الموظف وسجله الوظيفي وفق سياسات حفظ البيانات | soft delete only (`deletedAt`), history kept; retention `keepUntil` ⏸ Q14 | — | ✅ kept · 🔜 H3b retention |
+| §3.10.1 | تسجيل طلب إنهاء الخدمة | `offboardings` `EOS-YYYY-#####`, workflow `hr_offboarding` (`/hr/offboarding`); HR files the ending; the employee's **resignation** comes through «رفع طلب» → `/me/offboarding` with the art. 79 bis clock (E25) | `hr-h3b.test.ts` «E1/E2/E3/E4…», «E25 (art. 79 bis)…» | ✅ H3b |
+| §3.10.2 | تحديد سبب وتاريخ إنهاء الخدمة | the **closed** reasons list of docs/HR_H3B_LEGAL.md E1 (art. 74 as amended + arts. 79, 80, 81, 53, 77, 87), each with its article; reason-specific fields: art. 80 case from the nine + hearing record, art. 81 case, art. 87 event date, medical certificate, written agreement; notice (E2) and the legal gates (E6, E8, E10, E14, E26) at creation and again at approval | `hr-h3b.test.ts` «E1…», «E6 (art. 80)…», «E7/E9/E10/E14…», «E8 (art. 82)…», «E26 (art. 155)…» | ✅ H3b |
+| §3.10.3 | مراجعة واعتماد الإجراء | HR manager `approve` (requester never) → status مستقيل / منتهي الخدمة with the last working day (existing `changeStatus`), the settlement deadline (E15), the custody checklist, the IT task; `reject` / `cancel` (reverts status) | `hr-h3b.test.ts` «E1/E2/E3/E4…» | ✅ H3b |
+| §3.10.4 | إعداد المخالصة النهائية | `computeSettlement`: award on the last actual wage (art. 2, E11) with the art. 85 fractions (E12) and the art. 86 clause (E13), unused leave (art. 111, E16), overtime leave, the last month's days / absence / overtime from H2 (E18), notice compensation (art. 76, E3), art. 77 (E5), return ticket (art. 40, E20), outstanding advances / unreturned custody / fines (art. 88, E17); editable lines with a reason (audited); HR manager approves (never the computer) → **a separate payslip to Finance** (`/finance/settlements`, DECISIONS §22 Q2); Finance records the payment; due-date alerts (E15) | `hr-h3b.test.ts` «E11–E13, E15–E18, E20…», «E12 … E13 … E5…» | ✅ H3b |
+| §3.10.5 | استرداد العهد المسلمة للموظف | checklist seeded from the open custody at approval; each item returned (condition) or «لم تُرجَع» with an approved charge → settlement deduction; the step closes when nothing is open | `hr-h3b.test.ts` «E19, E21–E24…» | ✅ H3b |
+| §3.10.6 | إغلاق الصلاحيات والحسابات المرتبطة بالموظف | the thin **IT stage**: a core task in the IT department queue (`source: offboarding`) + `hr.offboarding.it_requested`; IT members (`it_staff`, implied by the department) and the system admin confirm on `/it/offboarding` → `hr.offboarding.it_confirmed`; the existing deactivation job still disables the account after the last day | `hr-h3b.test.ts` «E19, E21–E24…» (HR officer / department manager → 403) · `hr.test.ts`, `golive-g.test.ts` (job) | ✅ H3b |
+| §3.10.7 | إجراء مقابلة الخروج وتوثيق نتائجها | `exitInterview` from the versioned template `hr.exitInterview.template` (Q13); unknown keys refused; «امتنع» allowed | `hr-h3b.test.ts` «E19, E21–E24…» | ✅ H3b |
+| §3.10.8 | إصدار شهادة الخبرة عند الطلب | request type `experience_certificate` (exists) + `POST /hr/offboarding/:id/certificate` after approval (art. 64, E19): numbered CRT-, stored, audited, once | `requests.test.ts`; `hr-h3b.test.ts` «E19, E21–E24…» | ✅ H3b |
+| §3.10.9 | تحديث حالة الموظف إلى منتهي الخدمة | `complete` (HR or the daily job) once the four steps are done and the last day passed → `terminated` («منتهي الخدمة»), the contract «منتهٍ بإنهاء الخدمة» | `hr-h3b.test.ts` «E19, E21–E24…» | ✅ H3b |
+| §3.10.10 | الاحتفاظ بملف الموظف وسجله الوظيفي وفق سياسات حفظ البيانات | `retention.keepUntil` = last day + `hr.eos.retentionYears` (10, Q14); the file stays readable; nothing deleted by code (E23); no waiver field anywhere (art. 8, E24) | `hr-h3b.test.ts` «E19, E21–E24…» | ✅ H3b |
 
 ## §4 التقارير والتصدير (Reports & Export)
 
@@ -352,6 +353,52 @@ Built in **H3a** (2026-11-24, branch `hr-h3a`; owner reviews of 2026-11-24 and 2
 | 12 | نظام التقارير والتصدير إلى Excel | `/hr/export` | `/export/resources`, `/export` | `core/export/export.test.ts`, `dashboard.test.ts` | ✅ (scope grows per slice) |
 | 13 | نظام الصلاحيات والإشعارات | `/admin/roles`, `/notifications` | `/roles`, `/notifications` | `core/rbac/rbac.test.ts`, `core/notifications/notifications.test.ts` | ✅ |
 | 14 | توثيق واجهات الربط البرمجية وإمكانية التوسع مستقبلاً | `/api/v1/docs` | generated | `sales-s5.test.ts` (Sales routes) | ✅ · 🔜 H4 HR assertion + `docs/HR_GOV_INTEGRATIONS.md` |
+
+## H3b — docs/HR_H3B_LEGAL.md rules → tests (built 2026-11-25, branch `hr-h3b`)
+
+Every rule of the approved legal list has a test in `apps/api/src/modules/hr/hr-h3b.test.ts` (28 tests) — pure functions in «H3b legal rules — pure functions», the rest through the API with each role's allowed and forbidden actions.
+
+| Rule | Where | Test |
+|---|---|---|
+| T1 art. 3 | professional rejection reasons only; interview scores on the policy criteria | «T1: applicants by hand and by CSV…» |
+| T2 arts. 162–163 | offer refused under 15, flagged under 18 | «T2/T4/T5/T6/T7/T9/T10/T13/T14…», pure `ageOn` |
+| T3 arts. 26, 28 | `hr.saudization` from Qiwa (blank by default), warning on submission / offer / dashboard, never a block | «T1/T3/T12 + Q10…», «E1 retirement…» (legal-settings card) |
+| T4 arts. 33, 38 | `workPermit` on the offer → the file; flag when missing | «T2/T4/T5…» |
+| T5 arts. 50–52 | hire needs identity + e-mail + gender; everything else from the offer | «T2/T4/T5…» |
+| T6 art. 37 | open-ended refused for a non-Saudi; permit period as the default term | «T2/T4/T5…», «T6: a non-Saudi…» |
+| T7 art. 53 (1446H) | ≤ 180; end skips the four typed holidays + sick days; both parties may terminate (no one-sided field) | «T7: the probation end…», pure `probationEndDay` |
+| T8 art. 54 | re-probation refused within six months unless `differentProfession` | «T8 (art. 54)…» |
+| T9 art. 55 | renewal clause → renew / convert after 3 renewals or 4 years; no clause → HR confirms the continuation (Saudi → indefinite, non-Saudi → permit period) | «T9 (art. 55)…», pure `fixedTermExpiryOutcome` |
+| T10 art. 57 | `specific_work` needs the work description | «T2/T4/T5…» |
+| T12 art. 40 | `recruitmentCosts` on the requisition | «T1/T3/T12…» |
+| T13 | gov registration by hand; `hr.gov` deadlines blank → no alert, filled → one alert | «T2/T4/T5…», «T13 deadlines…» |
+| T14 | medical insurance policy at hire | «T2/T4/T5…» |
+| E1 art. 74 / 79 | closed reasons list; retirement from `hr.retirement.rules` (blank → warning, no number in code); 90-day alert | «E1/E2/E3/E4…», «E1 retirement…», pure `retirementAgeFor` |
+| E2 art. 75 | 60 / 30 monthly, 30 non-monthly | «E1/E2/E3/E4…», pure `noticeRequiredDays` |
+| E3 art. 76 | shortfall line (earning or deduction by party) | «E1/E2/E3/E4…» |
+| E4 (O1) | warning only, setting on by default | «E1/E2/E3/E4…» |
+| E5 art. 77 | remaining term or 15 days per year, min two months | «E12 … E13 … E5…», pure `art77CompensationHalalas` |
+| E6 art. 80 | nine cases from a list, hearing mandatory, absence case from H2 + the H3a written warning within the contract year, zero award | «E6 (art. 80)…», pure `contractYearWindow` |
+| E7 art. 81 | case required, full award | «E7/E9/E10/E14…» |
+| E8 art. 82 | blocks employer-initiated endings only; art. 80 warns; exhausted balance does not protect | «E8 (art. 82)…» ×2 |
+| E9 art. 83 | non-compete ≤ 24 months shown on the record | «E7/E9/E10/E14…» |
+| E10 arts. 53–54 | probation ending only inside the computed probation; art. 155 block | «E7/E9/E10/E14…», «E26…» |
+| E11 arts. 84, 2 | award on basic + all allowances + commissions (12-month average, O3) | «E11–E13, E15–E18, E20…», pure `eosAwardHalalas`, `awardWageOf` |
+| E12 art. 85 | 0 / ⅓ / ⅔ / full for a resignation only | «E12…», pure `resignationFractionBp` |
+| E13 art. 86 | excluded only with the contract clause reference | «E12 … E13…», «T2/T4/T5…» |
+| E14 art. 87 | 6 months marriage / 3 months birth from the leave event or a dated attachment | «E7/E9/E10/E14…», «E25…» (resignation path), pure `art87WithinLimit` |
+| E15 art. 88 | due in 7 / 14 days; separate payslip to Finance on approval; alerts before and after | «E11–E13…», «E12…» |
+| E16 art. 111 | unused annual leave on the monthly wage | «E11–E13…» |
+| E17 arts. 88, 91–92 | advances, custody charge, fines as deductions; adjustments consumed once | «E11–E13…» |
+| E18 | last month's days / absences / overtime from H2; `payroll_overlap` flag | «E11–E13…» |
+| E19 art. 64 | service certificate after approval, once, audited | «E19, E21–E24…» |
+| E20 art. 40 | return ticket for a non-Saudi ended by the employer; amount needed before approval | «E11–E13…» |
+| E21 | IT task + confirmation (IT only) | «E19, E21–E24…» |
+| E22 | gov exit references; overdue alert once the deadline is set | «E19, E21–E24…» |
+| E23 | 10-year retention, file readable | «E19, E21–E24…» |
+| E24 art. 8 | no waiver field on the record | «E19, E21–E24…» |
+| E25 art. 79 bis | 30 / 60 / 7 days, earliest date, deemed acceptance and postponement end by the job, employee cannot decide their own | «E25 (art. 79 bis)…», pure `resignationEndDay` |
+| E26 art. 155 | block on endings and on the final warning / termination of the H3a ladder; pregnancy record HR-only, hidden from managers; maternity leave counts | «E26 (art. 155)…» |
 
 ## H1 audit — gaps found in the code (2026-11-24) and what H1 did about them
 
