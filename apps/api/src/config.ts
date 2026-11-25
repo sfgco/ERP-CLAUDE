@@ -16,7 +16,7 @@ if (!process.env.VITEST && process.env.NODE_ENV !== 'test' && process.env.NODE_E
   }
 }
 const apiPort = Number(process.env.API_PORT) || 4000;
-const webPort = Number(process.env.WEB_PORT) || 5173;
+const webPort = Number(process.env.WEB_PORT) || 5200;
 
 /**
  * Environment configuration. Secrets come from SSM in deployed stages (serverless.yml);
