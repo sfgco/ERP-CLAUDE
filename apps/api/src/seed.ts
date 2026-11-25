@@ -2,7 +2,7 @@ import { DEPARTMENT_CODES, DEPARTMENT_NAMES_AR } from '@eayni/shared';
 import { env } from './config';
 import { logger } from './logger';
 import { connectDb, disconnectDb } from './db';
-import { ensureBaseline } from './bootstrap';
+import { ensureBaseline, registerModules } from './bootstrap';
 import { User } from './core/auth/model';
 import { hashPassword } from './core/auth/crypto';
 import { Branch, Department, Position, Site } from './core/org/model';
@@ -44,6 +44,11 @@ export async function seed(): Promise<{
   sampleLogins: { email: string; role: string }[];
   samplePassword: string;
 }> {
+  // Module registration (KPI registry, subscribers, record access) happens here, first, unconditionally. It used to
+  // happen inside seedSales — after its early return — so a database that already had customers but no H3a sample
+  // (a re-run after a partial seed, or a reseed of a reused database) failed with «مؤشر الأداء غير معروف» when the goals
+  // were created. The seed must never depend on which blocks ran before or on a server starting in parallel.
+  registerModules();
   await ensureBaseline();
   for (const code of DEPARTMENT_CODES) {
     await Department.updateOne(
