@@ -10,11 +10,15 @@
  *   npm run wt:check <dept>              lint + typecheck + FULL test suite + web build, the shared files it touched, ff-mergeable?
  *   npm run wt:rm    <dept>              remove the worktree folder when clean and pushed; the branch is always kept
  *
+ * wt:new also adds the folder to ../eayni-erp.code-workspace (the VS Code multi-root workspace beside the worktrees, outside
+ * every repo, never committed) under the department's Arabic name, and wt:rm removes it — so each department is its own
+ * Explorer folder and departments never get mixed (owner decision 2026-11-26).
+ *
  * Plain Node, no dependencies. Never deletes a branch, never force-pushes, never touches `deploy-aws`, never checks
  * out another branch in the main checkout (erp-1 ALWAYS stays on main).
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -65,7 +69,7 @@ export const DEPARTMENTS = {
   ops: { api: 4500, web: 5250, db: 'eayni_ops', nameAr: 'التشغيل', owns: ['apps/api/src/modules/ops/', 'apps/web/src/pages/ops/', 'packages/shared/src/schemas/ops', 'docs/OPS', 'docs/prompts/ops.md'] },
   procurement: { api: 4600, web: 5260, db: 'eayni_procurement', nameAr: 'المشتريات', owns: ['apps/api/src/modules/procurement/', 'apps/web/src/pages/procurement/', 'packages/shared/src/schemas/procurement', 'docs/PRC', 'docs/prompts/procurement.md'] },
   marketing: { api: 4700, web: 5270, db: 'eayni_marketing', nameAr: 'التسويق', owns: ['apps/api/src/modules/marketing/', 'apps/web/src/pages/marketing/', 'packages/shared/src/schemas/marketing', 'docs/MKT', 'docs/prompts/marketing.md'] },
-  sustainability: { api: 4800, web: 5280, db: 'eayni_sustainability', nameAr: 'التنمية المستدامة والشراكات', owns: ['apps/api/src/modules/sustainability/', 'apps/web/src/pages/sustainability/', 'packages/shared/src/schemas/sustainability', 'docs/SUS', 'docs/prompts/sustainability.md'] },
+  sustainability: { api: 4800, web: 5280, db: 'eayni_sustainability', nameAr: 'الاستدامة', owns: ['apps/api/src/modules/sustainability/', 'apps/web/src/pages/sustainability/', 'packages/shared/src/schemas/sustainability', 'docs/SUS', 'docs/prompts/sustainability.md'] },
   it: { api: 4900, web: 5290, db: 'eayni_it', nameAr: 'التقنية', owns: ['apps/api/src/modules/it/', 'apps/web/src/pages/it/', 'packages/shared/src/schemas/it', 'docs/IT', 'docs/prompts/it.md'] },
 };
 
@@ -111,6 +115,45 @@ function writeEnv(d) {
   writeFileSync(join(d.folder, '.env'), envText(d));
   console.log(`  .env → API ${d.api} · web ${d.web} · DB ${d.db}`);
 }
+// ---------------------------------------------------------------------------------------------------------------------
+// VS Code multi-root workspace beside the worktrees: ../eayni-erp.code-workspace (outside every repo, gitignored by location).
+const WORKSPACE_FILE = join(parent, 'eayni-erp.code-workspace');
+const MAIN_FOLDER_NAME = 'main — لا تعدّل هنا';
+function readWorkspace() {
+  if (!existsSync(WORKSPACE_FILE)) return { folders: [{ path: mainName, name: MAIN_FOLDER_NAME }] };
+  try {
+    const ws = JSON.parse(readFileSync(WORKSPACE_FILE, 'utf8'));
+    if (!Array.isArray(ws.folders)) ws.folders = [];
+    return ws;
+  } catch (err) {
+    fail(`${WORKSPACE_FILE} is not valid JSON (${err.message}) — fix it by hand, nothing was changed`);
+  }
+}
+function writeWorkspace(ws) {
+  writeFileSync(WORKSPACE_FILE, `${JSON.stringify(ws, null, 2)}\n`);
+}
+/** Add the department folder to the workspace (creates the file with the main entry when missing); idempotent. */
+function workspaceAdd(d) {
+  const ws = readWorkspace();
+  const rel = basename(d.folder);
+  const existing = ws.folders.find((f) => f.path === rel);
+  if (existing) existing.name = d.nameAr;
+  else ws.folders.push({ path: rel, name: d.nameAr });
+  writeWorkspace(ws);
+  console.log(`  workspace → ${basename(WORKSPACE_FILE)}: «${d.nameAr}» (${rel})`);
+}
+function workspaceRemove(d) {
+  if (!existsSync(WORKSPACE_FILE)) return;
+  const ws = readWorkspace();
+  const rel = basename(d.folder);
+  const before = ws.folders.length;
+  ws.folders = ws.folders.filter((f) => f.path !== rel);
+  if (ws.folders.length !== before) {
+    writeWorkspace(ws);
+    console.log(`  workspace → removed «${d.nameAr}» (${rel}) from ${basename(WORKSPACE_FILE)}`);
+  }
+}
+
 function assertMainStaysOnMain() {
   const b = branchOf(mainRoot);
   if (b !== 'main') fail(`${mainName} is on "${b}". It must ALWAYS stay on main (docs/WORKTREES.md); switch it back with: git -C ${mainRoot} checkout main`);
@@ -125,16 +168,18 @@ function list() {
     const branch = exists ? branchOf(d.folder) : '—';
     const head = exists ? git(['log', '--oneline', '-1', '--format=%h'], { cwd: d.folder }) : '—';
     const env = exists && existsSync(join(d.folder, '.env')) ? '.env ✓' : exists ? '.env ✗' : '';
-    return { department: code, folder: basename(d.folder), present: exists ? '✓' : '', branch, head, api: d.api, web: d.web, db: d.db, env };
+    const inWorkspace = existsSync(WORKSPACE_FILE) && readWorkspace().folders.some((f) => f.path === basename(d.folder)) ? '✓' : exists ? '✗' : '';
+    return { department: code, folder: basename(d.folder), present: exists ? '✓' : '', branch, head, api: d.api, web: d.web, db: d.db, env, workspace: inWorkspace };
   });
   console.table(rows);
-  console.log(`main checkout: ${mainRoot} (always on main)\nshared MongoDB: 127.0.0.1:27117 · data ${join(mainRoot, 'apps/api/.data/mongo')} · start it alone with: npm run mongo`);
+  console.log(`main checkout: ${mainRoot} (always on main)\nVS Code workspace: ${WORKSPACE_FILE}${existsSync(WORKSPACE_FILE) ? '' : ' (missing — wt:new creates it)'}\nshared MongoDB: 127.0.0.1:27117 · data ${join(mainRoot, 'apps/api/.data/mongo')} · start it alone with: npm run mongo`);
 }
 
 function envCmd(code) {
   const d = dept(code);
   if (!existsSync(d.folder)) fail(`${d.folder} does not exist — create it with: npm run wt:new ${code} <slice>`);
   writeEnv(d);
+  if (code !== 'main') workspaceAdd(d);
 }
 
 function newWorktree(code, slice) {
@@ -159,6 +204,7 @@ function newWorktree(code, slice) {
     git(['worktree', 'add', '-b', branch, d.folder, 'origin/main'], { cwd: mainRoot, inherit: true });
   }
   writeEnv(d);
+  workspaceAdd(d);
   console.log('▸ npm install');
   sh('npm', ['install', '--no-fund', '--no-audit'], { cwd: d.folder, inherit: true });
   console.log(`▸ seed → ${d.db} (every department's sample data; starts the shared MongoDB if it is not running)`);
@@ -232,6 +278,7 @@ function rm(code) {
   const unpushed = remote ? git(['rev-list', '--count', `origin/${branch}..${branch}`], { cwd: d.folder }) : 'all';
   if (unpushed !== '0') fail(`${branch} has ${unpushed} commits not on origin — push first: git -C ${d.folder} push -u origin ${branch}`);
   git(['worktree', 'remove', d.folder], { cwd: mainRoot, inherit: true });
+  workspaceRemove(d);
   console.log(`✓ removed ${d.folder}. Branch ${branch} is kept (local and origin); recreate the worktree any time with: npm run wt:new ${code} ${branch.replace(`${code}-`, '')}`);
 }
 

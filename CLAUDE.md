@@ -27,6 +27,12 @@ All ten department specs are in **one file: `docs/SPECS.md`** (Arabic, transcrib
 - The original PDFs are kept in `docs/specs/originals/` for reference only; use `docs/SPECS.md`.
 - **`docs/DECISIONS.md` settles what the specs leave open or contradict, and overrides CLAUDE.md defaults.** Read it before building a feature; add to it when the user decides something new.
 
+## Departments and folders (owner rule 2026-11-26 — docs/WORKTREES.md)
+1. **Every department has its own worktree folder:** `../erp-1-<dept>` beside the repo (`erp-1-sales`, `erp-1-hr`, `erp-1-finance`, …), with its own branch prefix, ports, local database and `.env`.
+2. **A new department always starts with** `npm run wt:new <dept> <slice>` — it creates the folder from the latest `main`, writes the `.env`, installs, seeds, and adds the folder to the VS Code workspace `../eayni-erp.code-workspace` under the department's Arabic name (`wt:rm` removes it). Never create a department folder or branch by hand.
+3. **Work on a department only inside its own folder.** Never in `erp-1` and never in another department's folder. A session that was started in `erp-1-hr` works on HR only.
+4. **`erp-1` always stays on `main`.** Never edit files, create commits or switch branches there; it is the demo of everything merged. Merges into `main` are fast-forward only, after the owner's approval.
+
 ## Golden rules
 1. **The server is the source of truth.** Permissions, workflow transitions, approval limits and validation are enforced in the API. The UI only hides what the API already forbids.
 2. **One record per real-world thing.** One employee file (HR owns it, the portal displays it — EP §20.1). One customer file shared by Sales, CS, Operations and Sustainability (SAL §19, CS §6.3). One container and vehicle registry (OPS §2.3). One party master for every outside organization, whether customer, supplier or both, with duplicate prevention (FIN §8). Modules reference records; they never copy them (except snapshots on issued documents such as quotes, invoices, certificates).

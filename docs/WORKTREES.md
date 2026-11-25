@@ -16,7 +16,7 @@ code stays one repository and one `main`; the worktrees are checkouts of departm
 | Operations | `erp-1-ops` | `ops-<slice>` | 4500 | 5250 | `eayni_ops` | `modules/ops/`, `pages/ops/`, `schemas/ops*.ts`, `docs/OPS*.md` |
 | Procurement | `erp-1-procurement` | `procurement-<slice>` | 4600 | 5260 | `eayni_procurement` | `modules/procurement/`, `pages/procurement/`, `schemas/procurement*.ts`, `docs/PRC*.md` |
 | Marketing | `erp-1-marketing` | `marketing-<slice>` | 4700 | 5270 | `eayni_marketing` | `modules/marketing/`, `pages/marketing/`, `schemas/marketing*.ts`, `docs/MKT*.md` |
-| Sustainability | `erp-1-sustainability` | `sustainability-<slice>` | 4800 | 5280 | `eayni_sustainability` | `modules/sustainability/`, `pages/sustainability/`, `schemas/sustainability*.ts`, `docs/SUS*.md` |
+| Sustainability (الاستدامة) | `erp-1-sustainability` | `sustainability-<slice>` | 4800 | 5280 | `eayni_sustainability` | `modules/sustainability/`, `pages/sustainability/`, `schemas/sustainability*.ts`, `docs/SUS*.md` |
 | IT | `erp-1-it` | `it-<slice>` | 4900 | 5290 | `eayni_it` | `modules/it/`, `pages/it/`, `schemas/it*.ts`, `docs/IT*.md` |
 
 The table is code: `scripts/wt.mjs` (`DEPARTMENTS`). Web ports are 5200 + 10 per department, outside Vite's default range
@@ -73,6 +73,17 @@ npm run wt:check hr               # full checks + shared-files list + ff-mergeab
 ```
 
 ## 4. Rules that protect each department
+
+**Departments and folders (owner rule 2026-11-26):**
+1. Every department has its own worktree folder `../erp-1-<dept>` and its own entry in the VS Code multi-root workspace
+   `../eayni-erp.code-workspace` (beside the worktrees, outside every repo, never committed) under its Arabic name:
+   المبيعات، الموارد البشرية، المالية، خدمة العملاء، التشغيل، المشتريات، التسويق، الاستدامة، التقنية; `erp-1` appears as
+   «main — لا تعدّل هنا».
+2. A new department always starts with `npm run wt:new <dept> <slice>`: the folder from the latest `main`, its `.env`,
+   `npm install`, the seed, and the workspace entry (the file is created with the main entry when missing). `wt:rm` removes
+   the folder and its workspace entry; the branch stays.
+3. Work on a department only inside its own folder — never in `erp-1`, never in another department's folder.
+4. `erp-1` always stays on `main`: no edits, no commits, no branch switches there.
 
 1. **`erp-1` ALWAYS stays on `main`.** Never check out another branch there; it is the demo of everything merged
    (API 4000, web 5200, DB `eayni_main`). Department work happens in the department's worktree. `wt:*` refuses to run
