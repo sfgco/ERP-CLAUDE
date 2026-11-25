@@ -92,16 +92,25 @@ serverless.yml
 
 Inside a module: `model.ts`, `schema.ts` (zod), `service.ts` (business logic), `routes.ts` (parse, authorize, call service), `events.ts`, `*.test.ts`.
 
-## Commands (create these scripts in Phase 0)
+## Commands
 ```bash
 npm install
-npm run dev          # api (localhost:4000) + web (localhost:5173)
+npm run dev          # this worktree's api + web on the ports in its .env (main: localhost:4000 / localhost:5173)
+npm run seed         # every department's sample data into this worktree's database
 npm run test
 npm run lint
 npm run typecheck
+npm run wt:list      # department worktrees: wt:new / wt:dev / wt:sync / wt:check / wt:rm (docs/WORKTREES.md)
 npx serverless deploy --stage staging
 ```
 Never deploy to `prod` from a local machine.
+
+## Worktrees and branches (docs/WORKTREES.md — read it before creating a branch)
+- **`erp-1` ALWAYS stays on `main`.** Never check out another branch in the main checkout; it is the demo of everything merged (API 4000, web 5173, DB `eayni_main`).
+- One worktree per department beside the repo (`erp-1-sales`, `erp-1-hr`, `erp-1-finance`, …), one branch prefix per department (`sales-*`, `hr-*`, `finance-*`, …), always created from the latest `origin/main` with `npm run wt:new <dept> <slice>`. Each has its own ports and local database from its gitignored `.env`.
+- A department branch changes only its own folders; every shared file it touches is listed in the slice report with the reason.
+- Department smoke tests (`apps/api/src/departments.smoke.test.ts`, `apps/web/src/test/departments.test.ts`) fail CI when any department's routes, navigation, labels or modules disappear. Add the new department's row in the slice that creates it.
+- Merge into `main` only after `wt:sync`, `wt:check` (full suite), CI green and the owner's explicit approval, and only fast-forward. Never rebase or force-push a pushed branch without the owner's OK; never delete a branch, a worktree with changes, the `local-s4-attempt-2026-11-12` stash or anything on `deploy-aws`.
 
 ## Serverless rules
 - Reuse the Mongo connection across invocations: connect once outside the handler, cache the promise, small `maxPoolSize`.

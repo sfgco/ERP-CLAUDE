@@ -3,7 +3,8 @@ name: CI
 on:
   push:
     # Feature branches run the full check on push too, so they are tested before a PR is opened.
-    branches: [main, 'sales-*', 'hr-*']
+    # One prefix per department (docs/WORKTREES.md) plus infra-* for platform work.
+    branches: [main, 'sales-*', 'hr-*', 'finance-*', 'cs-*', 'ops-*', 'procurement-*', 'marketing-*', 'sustainability-*', 'it-*', 'infra-*']
   pull_request:
 
 jobs:
